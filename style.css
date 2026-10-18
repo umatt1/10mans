@@ -1,7 +1,7 @@
 :root{
   --bg:#171e28;--panel:#1f2937;--panel2:#253141;--line:#2f3d50;--text:#e4e9f0;--mute:#8393a8;
   --blue:#4a90d9;--orange:#f5a623;--good:#3fc06a;--bad:#e5534b;--neutral:#c8d1dc;
-  --c1:#4a90d9;--c2:#f5a623;--c3:#3fc06a;--c4:#e5534b;--c5:#b07be0;--c6:#2fc7c7;--c7:#e8d44d;--c8:#ff8fb1;
+  --tA:#4a90d9;--tB:#e8793a;--c1:#4a90d9;--c2:#f5a623;--c3:#3fc06a;--c4:#e5534b;--c5:#b07be0;--c6:#2fc7c7;--c7:#e8d44d;--c8:#ff8fb1;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -111,3 +111,11 @@ td.heat{text-align:center}
 .toast[hidden]{display:none}
 tr.undone{opacity:.55}tr.discarded{opacity:.4;text-decoration:line-through}tr.current{background:#223044}
 button[disabled]{opacity:.55;cursor:wait}
+
+/* team colours: A and B are fixed for a scrim day, independent of who won the map */
+tbody tr.tA td{background:rgba(74,144,217,.11)}tbody tr.tB td{background:rgba(232,121,58,.11)}
+tbody tr.tA td:first-child{box-shadow:inset 3px 0 0 var(--tA)}tbody tr.tB td:first-child{box-shadow:inset 3px 0 0 var(--tB)}
+tbody tr.tA:hover td,tbody tr.tB:hover td{filter:brightness(1.25)}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid}
+.pill.tA{background:rgba(74,144,217,.18);color:#a9cdf5;border-color:var(--tA)}.pill.tB{background:rgba(232,121,58,.18);color:#f5bd9c;border-color:var(--tB)}
+.tcA{color:#7db6ee}.tcB{color:#f09a68}

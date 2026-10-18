@@ -161,3 +161,23 @@ test("history is read-only (no action buttons) when signed out", async () => {
   assert.doesNotMatch(el("#app").innerHTML, /data-act="ledger"/);
   assert.match(el("#app").innerHTML, /Read-only/);
 });
+
+test("scoreboard rows are colour-coded by team, and the colour follows the player across maps", async () => {
+  const {run} = await load();
+  const html = run(`gameHtml(DB.games.find(g => g.date === '2026-10-17' && g.map === 'Dust2'))`);
+  assert.equal((html.match(/<tr class="tA">/g) || []).length, 5, "five players on team A");
+  assert.equal((html.match(/<tr class="tB">/g) || []).length, 5, "five players on team B");
+  assert.match(html, /pill tA/); assert.match(html, /pill tB/);
+  // OATH (Will) is on the winning team A in both maps: same colour even though sides/maps differ.
+  const rowOf = (h, name) => h.split("<tr").find(r => r.includes(name));
+  const anubis = run(`gameHtml(DB.games.find(g => g.date === '2026-10-17' && g.map === 'Anubis'))`);
+  assert.match(rowOf(html, "OATH"), /class="tA"/);
+  assert.match(rowOf(anubis, "OATH"), /class="tA"/);
+  assert.match(rowOf(html, "zDemoncake"), /class="tB"/);
+});
+
+test("sheet-only games have no team colours (teams are unknown there)", async () => {
+  const {run} = await load();
+  const html = run(`gameHtml(DB.games.find(g => g.date === '2026-03-28' && g.map === 'Nuke'))`);
+  assert.doesNotMatch(html, /<tr class="t[AB]">/);
+});

@@ -151,7 +151,7 @@ function table(id, cols, rows, def = {}) {
     return s.dir * (typeof x === "string" ? x.localeCompare(y) : (x ?? -1e9) - (y ?? -1e9));
   });
   const head = cols.map(c => `<th data-sort="${id}" data-k="${c.k}" class="${c.l ? "l" : ""}${c.k === s.k ? " on" : ""}">${c.h}${c.k === s.k ? (s.dir < 0 ? " ▾" : " ▴") : ""}</th>`).join("");
-  const body = sorted.map(r => `<tr>${cols.map(c => `<td${c.l ? ' class="l"' : ""}>${c.f(r)}</td>`).join("")}</tr>`).join("");
+  const body = sorted.map(r => `<tr${def.rowClass && def.rowClass(r) ? ` class="${def.rowClass(r)}"` : ""}>${cols.map(c => `<td${c.l ? ' class="l"' : ""}>${c.f(r)}</td>`).join("")}</tr>`).join("");
   return `<div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 const box = (title, body, right = "") => `<section class="box"><div class="box-head">${title}<span class="sp">${right}</span></div>${body}</section>`;
@@ -270,12 +270,17 @@ function teamName(date, side) {
   return best ? `team_${best.name.toLowerCase()}` : (side === "A" ? "Team 1" : "Team 2");
 }
 
-function scoreboard(m) {
+// Team A / B are fixed per scrim day (the first scoreboard of the day sets the rosters), so a player keeps one colour all day.
+const teamOf = (date, name) => { const s = DB.series[date]; return s ? (s.A.includes(name) ? "A" : s.B.includes(name) ? "B" : null) : null; };
+const teamPill = (date, side) => `<span class="pill t${side}">${esc(teamName(date, side))}</span>`;
+
+function scoreboard(m, g) {
   const t = (title, cls, ps) => `<div class="teamhead ${cls}">${title}</div><div class="scroll"><table><thead><tr><th>Player</th><th>Rating</th><th>K / D / A</th><th>+/-</th><th>ADR</th><th>HS%</th><th>KAST</th><th class="l">Roles</th></tr></thead><tbody>${[...ps].sort((a, b) => b.rating - a.rating).map(p => {
-    const a = REF.aliases[p.name];
-    return `<tr><td>${a ? pl(a) + `<small>${esc(p.name)}</small>` : esc(p.name)}</td><td>${p.rating == null ? "–" : rt(p.rating)}</td><td>${p.k} / ${p.d} / ${p.a}</td><td>${sgn(p.k - p.d)}</td><td>${f(p.adr, 1)}</td><td>${f(p.hs, 0)}%</td><td>${p.kast == null ? "–" : f(p.kast * 100, 0) + "%"}</td><td class="l muted">${esc((p.roles || []).join(", "))}</td></tr>`;
+    const a = REF.aliases[p.name], tm = g && teamOf(g.date, a || p.name);
+    return `<tr${tm ? ` class="t${tm}"` : ""}><td>${a ? pl(a) + `<small>${esc(p.name)}</small>` : esc(p.name)}</td><td>${p.rating == null ? "–" : rt(p.rating)}</td><td>${p.k} / ${p.d} / ${p.a}</td><td>${sgn(p.k - p.d)}</td><td>${f(p.adr, 1)}</td><td>${f(p.hs, 0)}%</td><td>${p.kast == null ? "–" : f(p.kast * 100, 0) + "%"}</td><td class="l muted">${esc((p.roles || []).join(", "))}</td></tr>`;
   }).join("")}</tbody></table></div>`;
-  return t(`Winners · ${m.score[0]}`, "w", m.win) + t(`Losers · ${m.score[1]}`, "x", m.lose);
+  const side = s => g && g.winner ? teamPill(g.date, s === "win" ? g.winner : g.winner === "A" ? "B" : "A") + " " : "";
+  return t(`${side("win")}Winners · ${m.score[0]}`, "w", m.win) + t(`${side("lose")}Losers · ${m.score[1]}`, "x", m.lose);
 }
 
 function gameHtml(g, open = false) {
@@ -283,7 +288,7 @@ function gameHtml(g, open = false) {
   const badge = m?.win ? `<span class="badge ref">Refrag</span>` : m ? `<span class="badge">score only</span>` : `<span class="badge">sheet</span>`;
   const loc = m?.local ? `<span class="badge loc">local</span>` : "";
   let body;
-  if (m?.win) body = scoreboard(m);
+  if (m?.win) body = scoreboard(m, g);
   else if (g.rows.length) {
     const cols = [
       {k: "name", h: "Player", l: 1, f: r => pl(r.name)},
@@ -291,7 +296,7 @@ function gameHtml(g, open = false) {
       {k: "diff", h: "+/-", v: r => r.k - r.d, f: r => sgn(r.k - r.d)},
       {k: "adr", h: "ADR", f: r => f(r.adr, 1)}, {k: "hs", h: "HS%", f: r => f(r.hs, 0) + "%"},
       {k: "r", h: "Rating*", v: rowRating, f: r => rt(rowRating(r))}];
-    body = table("g" + g.i, cols, g.rows, {k: "r"});
+    body = table("g" + g.i, cols, g.rows, {k: "r", rowClass: r => r.team ? "t" + r.team : ""});
   } else body = `<div class="box-body muted">Score only: Refrag has no scoreboard for this demo ("Stats not available").</div>`;
   const acts = `<div class="actions">${g.rows.length ? dlBtn(`g:${g.i}:csv`) : ""}${m?.win ? dlBtn(`g:${g.i}:json`, "↓ JSON (re-importable)") : ""}${SB && signedIn() && m && !m.local ? `<button class="btn danger" data-act="rmremote" data-id="${esc(m.id)}">Remove from site</button>` : ""}${m?.local ? `<button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove local</button>` : ""}</div>`;
   return `<details class="game" id="g${g.i}"${open ? " open" : ""}><summary><b>${esc(g.map)}</b>${badge}${loc}<span class="muted">${m?.time ? esc(m.time) : ""}</span><span class="sc">${g.score ? g.score.join(" – ") : ""}</span></summary><div class="gbody">${body}${acts}</div></details>`;
@@ -301,9 +306,9 @@ function daysView(focus) {
   const html = DB.days.map(d => {
     const gs = DB.byDate[d], ser = DB.series[d], rows = DB.rows.filter(r => r.date === d);
     const L = leaderRows(rows).sort((a, b) => b.rating - a.rating);
-    const header = ser ? `<div class="series"><div class="team"><b>${esc(teamName(d, "A"))}</b><small>${ser.A.map(esc).join(", ")}</small></div>
+    const header = ser ? `<div class="series"><div class="team"><b class="tcA">${esc(teamName(d, "A"))}</b><small>${ser.A.map(esc).join(", ")}</small></div>
         <div class="big"><span class="${ser.wins.A >= ser.wins.B ? "w" : "x"}">${ser.wins.A}</span> : <span class="${ser.wins.B > ser.wins.A ? "w" : "x"}">${ser.wins.B}</span><div class="muted" style="font-size:11px;font-weight:400">best of 3 · ${ser.games} played</div></div>
-        <div class="team"><b>${esc(teamName(d, "B"))}</b><small>${ser.B.map(esc).join(", ")}</small></div></div>` : "";
+        <div class="team"><b class="tcB">${esc(teamName(d, "B"))}</b><small>${ser.B.map(esc).join(", ")}</small></div></div>` : "";
     const maps = `<div class="maps">${gs.map(g => `<a class="mapcard" href="#days/${d}/g${g.i}"><b>${esc(g.map)}</b><span class="sc">${g.score ? g.score.join(" – ") : "–"}</span></a>`).join("")}</div>`;
     const mvp = L[0];
     return `<div id="day-${d}">` + box(`${fdate(d)} · ${gs.length} map${gs.length === 1 ? "" : "s"}`,
@@ -342,7 +347,7 @@ function playerView(name) {
   const gcols = (key, h, link) => [{k: key, h, l: 1, f: r => link ? `<a class="pl" href="#days/${r[key]}">${fdate(r[key])}</a>` : esc(r[key])},
     {k: "n", h: "Maps", f: r => r.n}, {k: "kd", h: "K/D", f: r => f(r.kd)}, {k: "adr", h: "ADR", f: r => f(r.adr, 1)}, {k: "hs", h: "HS%", f: r => f(r.hs, 0) + "%"},
     {k: "winPct", h: "Win%", f: r => r.winPct == null ? "–" : f(r.winPct, 0) + "%"}, {k: "rating", h: RL(), f: r => rt(r.rating)}];
-  const log = sorted.slice().reverse().map(r => `<tr><td><a class="pl" href="#days/${r.date}/g${r.g}">${fdate(r.date)}</a></td><td class="l">${esc(r.map)}</td><td>${r.win == null ? "–" : r.win ? '<span class="pos">W</span>' : '<span class="neg">L</span>'}</td><td>${r.k} / ${r.d} / ${r.a}</td><td>${f(r.k / (r.d || 1))}</td><td>${f(r.adr, 1)}</td><td>${f(r.hs, 0)}%</td><td>${rt(rowRating(r))}</td></tr>`).join("");
+  const log = sorted.slice().reverse().map(r => `<tr><td><a class="pl" href="#days/${r.date}/g${r.g}">${fdate(r.date)}</a></td><td class="l">${esc(r.map)}</td><td class="l">${r.team ? teamPill(r.date, r.team) : ""}</td><td>${r.win == null ? "–" : r.win ? '<span class="pos">W</span>' : '<span class="neg">L</span>'}</td><td>${r.k} / ${r.d} / ${r.a}</td><td>${f(r.k / (r.d || 1))}</td><td>${f(r.adr, 1)}</td><td>${f(r.hs, 0)}%</td><td>${rt(rowRating(r))}</td></tr>`).join("");
   const best = sorted.reduce((x, y) => rowRating(y) > rowRating(x) ? y : x), worst = sorted.reduce((x, y) => rowRating(y) < rowRating(x) ? y : x);
   $("#app").innerHTML = `<p><a class="btn" href="#players">← Players</a></p>` +
     box("Player", `<div class="hero"><h1>${esc(name)}</h1><span class="rt ${rc(a.rating)}">${f(a.rating)}</span><span class="muted">${RL()} · #${rank} of ${total}</span>${Object.keys(roles).length ? `<span class="muted">Roles: ${Object.entries(roles).sort((x, y) => y[1] - x[1]).map(([r]) => esc(r)).join(", ")}</span>` : ""}</div>
@@ -352,7 +357,7 @@ function playerView(name) {
     `<div class="notice">Best map: <b>${fdate(best.date)} ${esc(best.map)}</b> (${f(rowRating(best))}, ${best.k}-${best.d}) · Worst: <b>${fdate(worst.date)} ${esc(worst.map)}</b> (${f(rowRating(worst))}, ${worst.k}-${worst.d}) · Consistency is the standard deviation of per-map rating (lower is steadier).</div>` +
     `<div class="grid g2">` + box("By Scrim day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1})) +
     box("By map", table("pm" + name, gcols("map", "Map"), grp(byMap, "map"), {k: "rating"})) + `</div>` +
-    box("Match log", `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th>Result</th><th>K / D / A</th><th>K/D</th><th>ADR</th><th>HS%</th><th>${RL()}</th></tr></thead><tbody>${log}</tbody></table></div>`);
+    box("Match log", `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th class="l">Team</th><th>Result</th><th>K / D / A</th><th>K/D</th><th>ADR</th><th>HS%</th><th>${RL()}</th></tr></thead><tbody>${log}</tbody></table></div>`);
 }
 
 function heatStyle(v, lo, hi) {
