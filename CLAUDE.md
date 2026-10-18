@@ -64,12 +64,21 @@ Gotcha: objects created inside the vm have a different prototype, so `harness.ru
 ## Refreshing sheet data (no cron)
 There is deliberately **no schedule** (owner worried about cost). Every Vercel build runs `python3 scripts/sync.py` first (buildCommand in
 `vercel.json`), so *any deploy re-reads the Google Sheet*; if Google/the sheet fails it logs `SHEET SYNC FAILED` and ships the last committed
-`data/stats.json`. Ways to refresh: (1) the Vercel **Deploy Hook** `refresh-sheet-data` (project 10mans, branch main; the URL is a SECRET
+`data/stats.json`. Ways to refresh: (1) the Vercel **Deploy Hook** `refresh-sheet-data` (project 10mans, branch main, subject to the daily cooldown below; the URL is a SECRET
 - never commit it. Vercel dashboard -> project -> Settings -> Git -> Deploy Hooks shows/regenerates it; POST it and a ~20s build runs; verified 2026-10-18), (2) Vercel dashboard
 Deployments -> Redeploy (not tested), (3) any push to main, (4) Actions tab -> Sync stats -> Run workflow (commits stats.json; also reruns on
 pushes touching data/matches/**). The footer "Sheet synced ..." time is when the last build fetched the sheet. Matches in Supabase are live
 immediately and need no refresh. Not built: an in-site refresh button (would need the ingest-match edge function to call the hook, with the hook
 URL as a Supabase secret).
+
+### Once-a-day cooldown on the refresh
+`vercel.json` `ignoreCommand` runs `scripts/cooldown.js` (Vercel's Ignored Build Step) before every build. Each build writes `data/version.json`
+(`scripts/stamp.py`: commit sha + when the sheet was last read; gitignored, only exists in the deployed output). A **production rebuild of the
+same commit** (deploy-hook call or dashboard Redeploy) is cancelled in ~1s if the live `version.json` says the sheet was read < 24h ago
+(`COOLDOWN_HOURS` env var changes it). **A new commit always builds** (so pushing is the override, and it restarts the 24h window), previews
+are never held back, and any missing/garbled/unreachable info builds (fail-open, so it can never block a real deploy). A failed sheet fetch
+keeps the old `syncedAt`, so it does not start a cooldown. Verified 2026-10-18: 3 hook calls -> 3 Canceled deployments (~0.9s each), live data
+unchanged. Unit-tested in `tests/cooldown.test.js`; the "allowed again after 24h" path is only unit-tested (not waited out live).
 
 ## CI/CD
 Push to `main` -> Vercel builds and deploys (git-connected). **Tests gate the deploy:** `vercel.json` sets `buildCommand: "npm test"`, so a
