@@ -1,5 +1,9 @@
-// Edge function: a signed-in user posts one match or an array of matches (the JSON the export script produces).
-// It validates each one with the same rules as scripts/build_matches.py and inserts the good ones.
+// Edge function: the only way to change match data. Needs a signed-in user.
+//   {action:"add", matches:[...]}   validate + append to the ledger (a bare array is treated as add)
+//   {action:"remove", id}           append a remove entry (nothing is deleted)
+//   {action:"move", seq}            roll back / fast-forward the ledger head (0 = empty start)
+// Every write is a Postgres function (supabase/migrations/001_ledger.sql) that locks the head row, so a
+// double-clicked or concurrent request is applied one at a time and duplicates are refused.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
@@ -9,7 +13,7 @@ const cors = {
 const reply = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-function problems(m: any): string[] {
+export function problems(m: any): string[] {
   const p: string[] = [];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(m?.date ?? "")) p.push("date must be YYYY-MM-DD");
   if (!m?.map) p.push("map missing");
@@ -31,9 +35,26 @@ Deno.serve(async (req) => {
   const jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
   const { data: { user } } = await db.auth.getUser(jwt);
   if (!user) return reply({ error: "Sign in to upload" }, 401);
+  const who = user.email ?? user.id;
 
   let body: any;
   try { body = await req.json(); } catch { return reply({ error: "Body is not valid JSON" }, 400); }
+  const action = Array.isArray(body) ? "add" : body?.action ?? "add";
+
+  if (action === "remove") {
+    const { data, error } = await db.rpc("ledger_remove", { mid: String(body.id ?? ""), by_email: who, note: body.note ?? null });
+    if (error) return reply({ error: error.message }, 500);
+    return data?.ok ? reply(data) : reply({ error: data?.error ?? "failed" }, 404);
+  }
+  if (action === "move") {
+    const seq = Number(body.seq);
+    if (!Number.isInteger(seq) || seq < 0) return reply({ error: "seq must be a non-negative integer" }, 400);
+    const { data, error } = await db.rpc("ledger_move", { target: seq, by_email: who });
+    if (error) return reply({ error: error.message }, 500);
+    return data?.ok ? reply(data) : reply({ error: data?.error ?? "failed" }, 400);
+  }
+  if (action !== "add") return reply({ error: `Unknown action ${action}` }, 400);
+
   const list: any[] = Array.isArray(body) ? body : body?.matches ?? [body];
   if (!list.length || list.length > 50) return reply({ error: "Send between 1 and 50 matches" }, 400);
 
@@ -42,13 +63,10 @@ Deno.serve(async (req) => {
   for (const m of list) {
     const bad = problems(m);
     if (bad.length) { results.push({ map: m?.map, ok: false, problems: bad }); continue; }
-    m.id ||= `${m.date}-${String(m.map).toLowerCase()}-${m.score.join("-")}`;
-    const { error } = await db.from("matches").insert({
-      id: m.id, date: m.date, map: m.map, score: m.score, data: m, uploaded_by: user.id,
-    });
-    if (error) {
-      results.push({ id: m.id, ok: false, problems: [error.code === "23505" ? "already on the site" : error.message] });
-    } else { inserted++; results.push({ id: m.id, ok: true }); }
+    const { data, error } = await db.rpc("ledger_add", { m, by_email: who, note: body?.note ?? null });
+    if (error) { results.push({ id: m.id, ok: false, problems: [error.message] }); continue; }
+    if (data?.ok) { inserted++; results.push({ id: data.id, ok: true, seq: data.seq }); }
+    else results.push({ id: m.id, ok: false, problems: [data?.error ?? "rejected"] });
   }
   if (!inserted) return reply({ error: results.flatMap((r) => r.problems ?? []).join("; ") || "nothing to insert", results }, 422);
   return reply({ inserted, results });

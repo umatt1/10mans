@@ -106,3 +106,8 @@ ol.steps{padding-left:20px}ol.steps li{margin:6px 0}
 td.heat{text-align:center}
 .tip{font-size:11px;color:var(--mute)}
 @media(max-width:600px){.tag{display:none}.series{grid-template-columns:1fr}.bars .row{grid-template-columns:80px 1fr 44px}}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:50;max-width:min(560px,92vw);padding:10px 16px;border-radius:4px;border:1px solid;box-shadow:0 6px 24px rgba(0,0,0,.45);font-size:13px}
+.toast.ok{background:#1d4a2c;border-color:#2d7a47;color:#cff5d9}.toast.err{background:#4a1f1f;border-color:#7a2d2d;color:#ffd0d0}
+.toast[hidden]{display:none}
+tr.undone{opacity:.55}tr.discarded{opacity:.4;text-decoration:line-through}tr.current{background:#223044}
+button[disabled]{opacity:.55;cursor:wait}

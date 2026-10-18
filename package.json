@@ -1,0 +1,9 @@
+{
+  "name": "10mans",
+  "private": true,
+  "description": "Stats site for an in-house CS2 10 mans league. No dependencies; tests use Node's built-in runner.",
+  "scripts": {
+    "test": "node --test tests/",
+    "serve": "python3 -m http.server 8123"
+  }
+}

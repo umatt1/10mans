@@ -43,6 +43,7 @@ let SRC = store.get("src", "sheet");
 const FILT = {day: "", map: "", min: 1};
 const SORT = {};
 let PEND = [];
+let BUSY = false;
 
 const RL = () => SRC === "refrag" ? "Rating" : "Rating*";
 const alias = n => REF.aliases[n] || n;
@@ -292,7 +293,7 @@ function gameHtml(g, open = false) {
       {k: "r", h: "Rating*", v: rowRating, f: r => rt(rowRating(r))}];
     body = table("g" + g.i, cols, g.rows, {k: "r"});
   } else body = `<div class="box-body muted">Score only: Refrag has no scoreboard for this demo ("Stats not available").</div>`;
-  const acts = `<div class="actions">${g.rows.length ? dlBtn(`g:${g.i}:csv`) : ""}${m?.win ? dlBtn(`g:${g.i}:json`, "↓ JSON (re-importable)") : ""}${m?.local ? `<button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove local</button>` : ""}</div>`;
+  const acts = `<div class="actions">${g.rows.length ? dlBtn(`g:${g.i}:csv`) : ""}${m?.win ? dlBtn(`g:${g.i}:json`, "↓ JSON (re-importable)") : ""}${SB && signedIn() && m && !m.local ? `<button class="btn danger" data-act="rmremote" data-id="${esc(m.id)}">Remove from site</button>` : ""}${m?.local ? `<button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove local</button>` : ""}</div>`;
   return `<details class="game" id="g${g.i}"${open ? " open" : ""}><summary><b>${esc(g.map)}</b>${badge}${loc}<span class="muted">${m?.time ? esc(m.time) : ""}</span><span class="sc">${g.score ? g.score.join(" – ") : ""}</span></summary><div class="gbody">${body}${acts}</div></details>`;
 }
 
@@ -551,7 +552,7 @@ function cloudBox() {
         <div class="actions" style="padding-left:0"><button class="btn" data-act="logout">Sign out</button></div></div>`
     : `<div class="box-body"><p class="muted">Publishing needs the shared login you were given.</p>
         <div class="pivot-ctl"><input type="text" id="sb-user" placeholder="Username / email" autocomplete="username"><input type="password" id="sb-pass" placeholder="Password" autocomplete="current-password" style="background:#131a23;color:var(--text);border:1px solid var(--line);border-radius:3px;padding:5px 8px"><button class="btn pri" data-act="login">Sign in</button></div></div>`;
-  return box("3 · Publish for everyone", body + `<div id="flash" class="box-body" style="padding-top:0"></div>`);
+  return box("3 · Publish for everyone", body);
 }
 function fillSnippet() {
   const el = $("#snip"); if (!el) return;
@@ -583,9 +584,9 @@ function renderPend() {
   const good = PEND.filter(x => !x.problems.length);
   el.innerHTML = `<div class="scroll"><table><thead><tr><th>File</th><th>Match</th><th>Players</th><th>Status</th></tr></thead><tbody>${PEND.map(x => {
     const unk = x.m?.win ? [...x.m.win, ...x.m.lose].map(p => p.name).filter(n => !REF.aliases[n]) : [];
-    return `<tr><td class="l">${esc(x.name)}</td><td class="l">${x.m ? esc(x.m.date) + " · " + esc(x.m.map) + " · " + esc((x.m.score || []).join("–")) : ""}</td><td>${x.m?.win ? x.m.win.length + x.m.lose.length : "–"}</td><td class="l ${x.problems.length ? "neg" : "pos"}">${x.problems.length ? esc(x.problems.join("; ")) : "OK"}${unk.length ? `<br><small>unmapped names: ${esc(unk.join(", "))}</small>` : ""}</td></tr>`;
+    return `<tr><td class="l">${esc(x.name)}</td><td class="l">${x.m ? esc(x.m.date) + " · " + esc(x.m.map) + " · " + esc((x.m.score || []).join("–")) : ""}</td><td>${x.m?.win ? x.m.win.length + x.m.lose.length : "–"}</td><td class="l ${x.problems.length ? "neg" : "pos"}">${x.problems.length ? esc(x.problems.join("; ")) : x.sending ? "Publishing…" : "OK"}${unk.length ? `<br><small>unmapped names: ${esc(unk.join(", "))}</small>` : ""}</td></tr>`;
   }).join("")}</tbody></table></div>
-  <div class="actions" style="padding-left:0">${good.length ? `${SB && signedIn() ? `<button class="btn pri" data-act="publish">Publish ${good.length} for everyone</button>` : ""}<button class="btn${SB && signedIn() ? "" : " pri"}" data-act="addLocal">Add ${good.length} to this browser</button><button class="btn" data-act="dlPend">↓ Download ${good.length} for upload</button>` : ""}<button class="btn" data-act="clearPend">Clear</button></div>
+  <div class="actions" style="padding-left:0">${good.length ? `${SB && signedIn() ? `<button class="btn pri" data-act="publish"${BUSY ? " disabled" : ""}>${BUSY ? "Publishing…" : `Publish ${good.length} for everyone`}</button>` : ""}<button class="btn${SB && signedIn() ? "" : " pri"}" data-act="addLocal">Add ${good.length} to this browser</button><button class="btn" data-act="dlPend">↓ Download ${good.length} for upload</button>` : ""}<button class="btn" data-act="clearPend">Clear</button></div>
   <p class="tip">"Add to this browser" is a private preview stored locally. Use the upload step below to publish for everyone.</p>`;
 }
 async function takeFiles(files) {
@@ -595,11 +596,11 @@ async function takeFiles(files) {
 
 /* ---------- data layer (static JSON or Supabase) ---------- */
 const getJson = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + " " + r.status); return r.json(); });
+const rest = p => fetch(CFG.supabaseUrl + "/rest/v1/" + p, {headers: {apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + CFG.supabaseAnonKey}})
+  .then(r => { if (!r.ok) throw new Error(p + " " + r.status); return r.json(); });
 async function loadData() {
   const stats = await getJson("data/stats.json");
   if (!SB) return [stats, await getJson("data/matches.json")];
-  const rest = p => fetch(CFG.supabaseUrl + "/rest/v1/" + p, {headers: {apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + CFG.supabaseAnonKey}})
-    .then(r => { if (!r.ok) throw new Error(p + " " + r.status); return r.json(); });
   const [ms, al] = await Promise.all([rest("matches?select=data&order=date.desc"), rest("aliases?select=ingame,player")]);
   return [stats, {aliases: Object.fromEntries(al.map(x => [x.ingame, x.player])), matches: ms.map(m => m.data)}];
 }
@@ -611,13 +612,58 @@ async function sbLogin(email, password) {
   store.set("sb", SESSION);
 }
 const signedIn = () => !!(SESSION && SESSION.exp > Date.now());
-async function sbUpload(matches) {
-  const r = await fetch(CFG.supabaseUrl + "/functions/v1/ingest-match", {method: "POST", headers: {apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + SESSION.token, "Content-Type": "application/json"}, body: JSON.stringify(matches)});
+async function sbCall(body) {
+  if (!signedIn()) { SESSION = null; store.set("sb", null); throw new Error("Your session expired. Sign in again on the Contribute page."); }
+  const r = await fetch(CFG.supabaseUrl + "/functions/v1/ingest-match", {method: "POST", headers: {apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + SESSION.token, "Content-Type": "application/json"}, body: JSON.stringify(body)});
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || "upload failed (" + r.status + ")");
+  if (r.status === 401) { SESSION = null; store.set("sb", null); }
+  if (!r.ok) { const e = new Error(j.error || "request failed (" + r.status + ")"); e.results = j.results; throw e; }
   return j;
 }
-const flash = (msg, bad) => { const el = $("#flash"); if (el) el.innerHTML = `<div class="notice ${bad ? "err" : "ok"}">${esc(msg)}</div>`; };
+const reloadData = async () => { [SHEET, REF] = await loadData(); buildDB(); };
+let toastTimer;
+const flash = (msg, bad) => {
+  let el = $("#toast");
+  if (!el) { el = document.createElement("div"); el.id = "toast"; document.body.appendChild(el); }
+  el.className = "toast " + (bad ? "err" : "ok"); el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, bad ? 9000 : 5000);
+};
+// Two-step confirm for destructive buttons: first click arms, second click (within 4s) runs.
+function armed(btn) {
+  if (btn.dataset.armed) return true;
+  btn.dataset.armed = "1"; btn.dataset.label = btn.textContent; btn.textContent = "Click again to confirm";
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.label; } }, 4000);
+  return false;
+}
+
+
+/* ---------- history (the ledger) ---------- */
+async function historyView() {
+  if (!SB) { $("#app").innerHTML = `<div class="notice">History needs the Supabase version of the site.</div>`; return; }
+  $("#app").innerHTML = `<h1>History</h1><p class="muted">Loading…</p>`;
+  let ev, head, audit;
+  try {
+    [ev, head, audit] = await Promise.all([
+      rest("match_events?select=seq,at,action,match_id,by_email,note,superseded,data&order=seq.desc"),
+      rest("ledger_head?select=seq"), rest("ledger_audit?select=at,by_email,action,from_seq,to_seq&order=at.desc&limit=15")]);
+  } catch (e) { $("#app").innerHTML = `<div class="notice err">Couldn't load history: ${esc(e.message)}</div>`; return; }
+  const h = head[0]?.seq ?? 0, live = ev.filter(e => !e.superseded).sort((x, y) => x.seq - y.seq);
+  const prev = [...live].reverse().find(e => e.seq < h), next = live.find(e => e.seq > h), can = signedIn();
+  const state = e => e.superseded ? "discarded" : e.seq === h ? "current" : e.seq < h ? "applied" : "undone";
+  const btn = (seq, text) => can ? `<button class="btn" data-act="ledger" data-seq="${seq}">${text}</button>` : "";
+  const when = t => new Date(t).toLocaleString();
+  const rows = ev.map(e => {
+    const s = state(e), what = e.action === "add" ? "Added" : "Removed";
+    const act = s === "applied" ? btn(e.seq, "Roll back to here") : s === "undone" ? btn(e.seq, "Fast-forward to here") : "";
+    return `<tr class="${s}"><td>${e.seq}</td><td class="l">${when(e.at)}</td><td class="l"><span class="badge${e.action === "add" ? " ref" : ""}">${what}</span> ${fdate(e.data.date)} · ${esc(e.data.map)} ${(e.data.score || []).join("–")}${e.note ? ` <small>${esc(e.note)}</small>` : ""}</td><td class="l muted">${esc(e.by_email || "")}</td><td class="l">${s === "current" ? "<b>◀ current</b>" : s === "undone" ? "rolled back" : s === "discarded" ? "discarded" : ""}</td><td>${act}</td></tr>`;
+  }).join("");
+  const start = h > 0 ? btn(0, "Roll back to the very start (empty)") : "";
+  $("#app").innerHTML = `<h1>History</h1>
+    <div class="notice">Every change is an entry in this list; nothing is deleted. The site shows the state at the <b>current</b> entry (#${h}). Roll back to undo later entries, fast-forward to redo them. Making a new change while rolled back discards the entries you rolled back past.</div>` +
+    box("Controls", `<div class="box-body pivot-ctl">${can ? `${prev ? btn(prev.seq, "◀ Step back") : h > 0 ? btn(0, "◀ Step back") : ""}${next ? btn(next.seq, "Step forward ▶") : ""}${start}` : `<span class="muted">Read-only. <a href="#contribute">Sign in</a> to roll back or fast-forward.</span>`}</div>`) +
+    box("Changes (newest first)", `<div class="scroll"><table><thead><tr><th>#</th><th class="l">When</th><th class="l">Change</th><th class="l">By</th><th class="l">State</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`) +
+    (audit.length ? box("Rollbacks and fast-forwards", `<div class="scroll"><table><tbody>${audit.map(a => `<tr><td class="l">${when(a.at)}</td><td class="l">${esc(a.action)}</td><td>#${a.from_seq} → #${a.to_seq}</td><td class="l muted">${esc(a.by_email || "")}</td></tr>`).join("")}</tbody></table></div>`) : "");
+}
 
 /* ---------- downloads ---------- */
 function handleDownload(what) {
@@ -666,11 +712,30 @@ document.addEventListener("click", e => {
   if (act === "logout") { SESSION = null; store.set("sb", null); contributeView(); }
   if (act === "publish") {
     const ok = PEND.filter(x => !x.problems.length);
-    sbUpload(ok.map(x => x.m)).then(async res => {
+    if (BUSY || !ok.length) return;
+    BUSY = true; ok.forEach(x => { x.sending = true; }); renderPend();
+    const settle = results => (results || []).forEach((r, i) => { if (ok[i] && !r.ok) ok[i].problems = r.problems || ["rejected"]; });
+    sbCall({action: "add", matches: ok.map(x => x.m)}).then(async res => {
+      settle(res.results);
       PEND = PEND.filter(x => x.problems.length);
-      [SHEET, REF] = await loadData(); buildDB(); contributeView();
-      flash(`Published ${res.inserted ?? ok.length} match${ok.length === 1 ? "" : "es"}.`);
-    }, err => flash(err.message, true));
+      await reloadData(); BUSY = false; contributeView();
+      flash(`Published ${res.inserted} match${res.inserted === 1 ? "" : "es"}${PEND.length ? `; ${PEND.length} rejected, see the preview table` : ""}.`, !!PEND.length);
+    }).catch(err => {
+      settle(err.results); ok.forEach(x => { x.sending = false; });
+      BUSY = false; renderPend(); flash(err.message, true);
+    });
+  }
+  if (act === "rmremote") {
+    if (BUSY || !armed(a)) return;
+    BUSY = true; a.disabled = true;
+    sbCall({action: "remove", id: a.dataset.id}).then(async () => { await reloadData(); BUSY = false; route(true); flash("Removed from the site. Undo it from the History page."); },
+      err => { BUSY = false; a.disabled = false; flash(err.message, true); });
+  }
+  if (act === "ledger") {
+    if (BUSY || !armed(a)) return;
+    BUSY = true; a.disabled = true;
+    sbCall({action: "move", seq: +a.dataset.seq}).then(async () => { await reloadData(); BUSY = false; await historyView(); flash("History moved. The site now shows that state."); },
+      err => { BUSY = false; a.disabled = false; flash(err.message, true); });
   }
   if (act === "dlLocal") download("matches-local.json", JSON.stringify(LOCAL, null, 1), "application/json");
   if (act === "rmlocal") { LOCAL = LOCAL.filter(m => m.id !== a.dataset.id); store.set("local", LOCAL); buildDB(); route(true); }
@@ -708,7 +773,7 @@ function route(keepScroll) {
   const y = scrollY;
   if (path === "days") { daysView(seg[1]); const t = seg[1] ? document.getElementById(seg[1]) : seg[0] ? document.getElementById("day-" + seg[0]) : null; if (t) { if (t.tagName === "DETAILS") t.open = true; t.scrollIntoView(); } else if (!keepScroll) scrollTo(0, 0); }
   else {
-    ({"": overview, players: playersView, maps: mapsView, records: recordsView, pivot: pivotView, contribute: contributeView}[path] ||
+    ({"": overview, players: playersView, maps: mapsView, records: recordsView, pivot: pivotView, contribute: contributeView, history: historyView}[path] ||
       (path === "p" ? () => playerView(seg[0]) : path === "compare" ? () => compareView(seg[0], seg[1]) : overview))();
     keepScroll ? scrollTo(0, y) : scrollTo(0, 0);
   }
@@ -718,7 +783,7 @@ function route(keepScroll) {
 loadData()
   .then(([s, r]) => {
     SHEET = s; REF = r;
-    $("#nav").innerHTML = NAV.map(([h, l]) => `<a href="#${h}" data-r="${h}">${l}</a>`).join("");
+    $("#nav").innerHTML = (SB ? [...NAV, ["history", "History"]] : NAV).map(([h, l]) => `<a href="#${h}" data-r="${h}">${l}</a>`).join("");
     $("#foot").innerHTML = `Sheet synced ${new Date(s.updated).toLocaleString()} · ${r.matches.length} Refrag matches (${r.matches.filter(m => m.win).length} with scoreboards) · <a href="https://github.com/${REPO}">source</a><br>Rating* is an estimate (HLTV-2.0-style from kills, deaths, assists and ADR); Refrag Rating is Refrag's own number. Not affiliated with HLTV or Refrag.`;
     buildDB(); addEventListener("hashchange", () => route()); route();
   })
