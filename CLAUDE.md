@@ -38,7 +38,7 @@ compiles `data/matches.json` (also run by `.github/workflows/sync.yml` on any pu
 page to produce a file. Aliases (Refrag in-game name -> sheet name) live in `data/aliases.json`.
 
 ## Hosting
-Currently GitHub Pages (https://umatt1.github.io/10mans/). `config.js` + `supabase/` + `vercel.json` + `docs/MIGRATION.md`
+Deployed on both GitHub Pages (https://umatt1.github.io/10mans/) and Vercel (https://10mans.vercel.app, project `10mans` under umatt1s-projects, git-connected so pushes auto-deploy). `config.js` + `supabase/` + `vercel.json` + `docs/MIGRATION.md`
 are the ready-but-untested path to Vercel + Supabase with shared-login uploads.
 
 ## Site

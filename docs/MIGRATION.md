@@ -3,6 +3,8 @@
 The site is plain static files, so Vercel needs no build step. Supabase adds the database, the shared login, and the
 upload endpoint that validates files. Nothing here is active until you flip `mode` in `config.js`; GitHub Pages keeps working.
 
+> **Status:** Vercel is done: https://10mans.vercel.app (project `10mans`, GitHub repo connected, redeploys on every push). Supabase is the remaining part.
+
 ## 1. Supabase
 1. Create a project. In **SQL editor**, run `supabase/schema.sql` (tables `matches` and `aliases`, public read, no direct writes).
 2. **Authentication → Users → Add user**: create the shared account (e.g. `crew@10mans.local` + a password; tick "Auto confirm").
