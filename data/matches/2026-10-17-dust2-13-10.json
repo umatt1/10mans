@@ -1,0 +1,158 @@
+{
+ "id": "f8c854ca-4026-4371-bd01-775d3b888015",
+ "date": "2026-10-17",
+ "time": "8:36 PM",
+ "map": "Dust2",
+ "score": [
+  13,
+  10
+ ],
+ "source": "refrag",
+ "win": [
+  {
+   "name": "OATH",
+   "roles": [
+    "AWPer",
+    "Lurker"
+   ],
+   "rating": 1.23,
+   "k": 22,
+   "d": 16,
+   "a": 9,
+   "hs": 54.5,
+   "kpr": 0.96,
+   "adr": 101.13,
+   "kast": 0.74
+  },
+  {
+   "name": "The Swooper",
+   "roles": [
+    "Support"
+   ],
+   "rating": 1.19,
+   "k": 19,
+   "d": 15,
+   "a": 6,
+   "hs": 73.7,
+   "kpr": 0.83,
+   "adr": 88.13,
+   "kast": 0.83
+  },
+  {
+   "name": "Dave Blunts",
+   "roles": [
+    "Entry"
+   ],
+   "rating": 1.14,
+   "k": 16,
+   "d": 15,
+   "a": 4,
+   "hs": 50.0,
+   "kpr": 0.7,
+   "adr": 77.52,
+   "kast": 0.83
+  },
+  {
+   "name": "Sema",
+   "roles": [
+    "AWPer"
+   ],
+   "rating": 1.09,
+   "k": 17,
+   "d": 14,
+   "a": 5,
+   "hs": 52.9,
+   "kpr": 0.74,
+   "adr": 83.7,
+   "kast": 0.78
+  },
+  {
+   "name": "travypatty",
+   "roles": [
+    "Support"
+   ],
+   "rating": 0.67,
+   "k": 18,
+   "d": 15,
+   "a": 7,
+   "hs": 72.2,
+   "kpr": 0.78,
+   "adr": 76.3,
+   "kast": 0.83
+  }
+ ],
+ "lose": [
+  {
+   "name": "The Za",
+   "roles": [
+    "Support"
+   ],
+   "rating": 0.93,
+   "k": 20,
+   "d": 17,
+   "a": 7,
+   "hs": 50.0,
+   "kpr": 0.87,
+   "adr": 108.61,
+   "kast": 0.78
+  },
+  {
+   "name": "Noah Jawn",
+   "roles": [
+    "Support",
+    "AWPer"
+   ],
+   "rating": 0.89,
+   "k": 13,
+   "d": 19,
+   "a": 8,
+   "hs": 76.9,
+   "kpr": 0.57,
+   "adr": 76.83,
+   "kast": 0.65
+  },
+  {
+   "name": "zDemoncake",
+   "roles": [
+    "Rifler"
+   ],
+   "rating": 0.71,
+   "k": 13,
+   "d": 20,
+   "a": 3,
+   "hs": 61.5,
+   "kpr": 0.57,
+   "adr": 67.91,
+   "kast": 0.61
+  },
+  {
+   "name": "ByMax",
+   "roles": [
+    "AWPer",
+    "Entry"
+   ],
+   "rating": 0.63,
+   "k": 15,
+   "d": 19,
+   "a": 6,
+   "hs": 20.0,
+   "kpr": 0.65,
+   "adr": 76.0,
+   "kast": 0.57
+  },
+  {
+   "name": "Tigereye16",
+   "roles": [
+    "Lurker"
+   ],
+   "rating": 0.52,
+   "k": 13,
+   "d": 17,
+   "a": 2,
+   "hs": 23.1,
+   "kpr": 0.57,
+   "adr": 46.17,
+   "kast": 0.61
+  }
+ ]
+}

@@ -4,11 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>10 Mans Stats</title>
+<meta name="description" content="Stats, matches and analytics for our in-house CS2 10 mans.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header><div class="wrap bar"><h1>10<span>MANS</span></h1><nav id="nav"></nav><small id="updated"></small></div></header>
-<main class="wrap" id="app"></main>
+<header>
+  <div class="top"><div class="wrap topbar">
+    <a class="logo" href="#"><b>10</b>MANS</a>
+    <span class="tag">in-house CS2 stats</span>
+    <div class="src" id="src" role="group" aria-label="Data source">
+      <button data-src="sheet" title="Everything in the Google Sheet">Google Sheet</button>
+      <button data-src="refrag" title="Only matches with an official Refrag scoreboard">Refrag</button>
+    </div>
+  </div></div>
+  <nav class="navbar"><div class="wrap" id="nav"></div></nav>
+</header>
+<main class="wrap" id="app"><p class="muted">Loading…</p></main>
+<footer><div class="wrap muted" id="foot"></div></footer>
+<script src="config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

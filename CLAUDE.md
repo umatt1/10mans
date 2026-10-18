@@ -31,7 +31,19 @@ Noah Jawn=Noah, zDemoncake=Cristian, ByMax=Max, Tigereye16=Mark.
   4/25 and everything before 3/28 only exist in one source: 3/28 and 4/25 are sheet-only (no Refrag upload);
   Refrag demos from 2026-01-16 (Inferno 15-9) and 02-22 (Inferno 13-5, Anubis 13-11) are not in the sheet at all.
 
+## Match files and contributing
+One JSON file per match in `data/matches/` (format on the site's Contribute page). `scripts/build_matches.py` validates them and
+compiles `data/matches.json` (also run by `.github/workflows/sync.yml` on any push touching `data/matches/**`, and by
+`validate.yml` on PRs). `tools/export-refrag-match.js` is the console/bookmarklet script contributors run on a Refrag match
+page to produce a file. Aliases (Refrag in-game name -> sheet name) live in `data/aliases.json`.
+
+## Hosting
+Currently GitHub Pages (https://umatt1.github.io/10mans/). `config.js` + `supabase/` + `vercel.json` + `docs/MIGRATION.md`
+are the ready-but-untested path to Vercel + Supabase with shared-login uploads.
+
 ## Site
-`index.html` + `app.js` + `style.css`. Hash routes: `#` leaderboard, `#matches`, `#p/<name>` player page.
-"Rating*" on the leaderboard is an HLTV-2.0-style estimate (KAST/impact approximated); the Matches page shows
-real Refrag Rating and KAST where available. Preview locally with `python3 -m http.server`.
+`index.html` + `app.js` + `style.css` (HLTV-inspired). Hash routes: `#` overview, `#days[/date[/gN]]`, `#players`, `#p/<name>`,
+`#maps`, `#records`, `#compare/<a>/<b>`, `#pivot?rows=&cols=&val=&chart=&day=&map=&min=`, `#contribute`.
+Header toggle switches between the Google Sheet (all history, estimated "Rating*") and Refrag-only (official Rating/KAST),
+persisted in localStorage. Teams per LAN day come from the first Refrag scoreboard; sheet-only days have no teams/series.
+Matches added via the Contribute page preview live in localStorage only ("local"). Preview locally with `python3 -m http.server`.

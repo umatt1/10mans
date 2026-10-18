@@ -1,0 +1,158 @@
+{
+ "id": "9809ad9a-d600-4301-ab93-4aa782a30365",
+ "date": "2026-10-17",
+ "time": "7:57 PM",
+ "map": "Anubis",
+ "score": [
+  13,
+  4
+ ],
+ "source": "refrag",
+ "win": [
+  {
+   "name": "Dave Blunts",
+   "roles": [
+    "Support"
+   ],
+   "rating": 1.23,
+   "k": 16,
+   "d": 7,
+   "a": 2,
+   "hs": 62.5,
+   "kpr": 0.94,
+   "adr": 68.47,
+   "kast": 0.82
+  },
+  {
+   "name": "The Swooper",
+   "roles": [
+    "Support"
+   ],
+   "rating": 1.14,
+   "k": 19,
+   "d": 9,
+   "a": 3,
+   "hs": 52.6,
+   "kpr": 1.12,
+   "adr": 108.12,
+   "kast": 0.82
+  },
+  {
+   "name": "OATH",
+   "roles": [
+    "Lurker"
+   ],
+   "rating": 0.79,
+   "k": 22,
+   "d": 10,
+   "a": 7,
+   "hs": 36.4,
+   "kpr": 1.29,
+   "adr": 130.06,
+   "kast": 0.82
+  },
+  {
+   "name": "Sema",
+   "roles": [
+    "AWPer",
+    "Entry"
+   ],
+   "rating": 0.76,
+   "k": 9,
+   "d": 13,
+   "a": 6,
+   "hs": 55.6,
+   "kpr": 0.53,
+   "adr": 60.41,
+   "kast": 0.71
+  },
+  {
+   "name": "travypatty",
+   "roles": [
+    "Rifler"
+   ],
+   "rating": 0.47,
+   "k": 9,
+   "d": 11,
+   "a": 11,
+   "hs": 11.1,
+   "kpr": 0.53,
+   "adr": 86.06,
+   "kast": 0.88
+  }
+ ],
+ "lose": [
+  {
+   "name": "zDemoncake",
+   "roles": [
+    "Support",
+    "Lurker"
+   ],
+   "rating": 1.48,
+   "k": 8,
+   "d": 16,
+   "a": 5,
+   "hs": 62.5,
+   "kpr": 0.47,
+   "adr": 71.82,
+   "kast": 0.53
+  },
+  {
+   "name": "Noah Jawn",
+   "roles": [
+    "AWPer"
+   ],
+   "rating": 1.38,
+   "k": 15,
+   "d": 15,
+   "a": 5,
+   "hs": 46.7,
+   "kpr": 0.88,
+   "adr": 97.18,
+   "kast": 0.71
+  },
+  {
+   "name": "ByMax",
+   "roles": [
+    "AWPer",
+    "Support"
+   ],
+   "rating": 1.33,
+   "k": 13,
+   "d": 13,
+   "a": 2,
+   "hs": 46.2,
+   "kpr": 0.76,
+   "adr": 75.24,
+   "kast": 0.65
+  },
+  {
+   "name": "The Za",
+   "roles": [
+    "Entry"
+   ],
+   "rating": 1.09,
+   "k": 11,
+   "d": 14,
+   "a": 3,
+   "hs": 63.6,
+   "kpr": 0.65,
+   "adr": 93.06,
+   "kast": 0.59
+  },
+  {
+   "name": "Tigereye16",
+   "roles": [
+    "Rifler"
+   ],
+   "rating": 0.49,
+   "k": 2,
+   "d": 17,
+   "a": 2,
+   "hs": 0.0,
+   "kpr": 0.12,
+   "adr": 12.94,
+   "kast": 0.24
+  }
+ ]
+}
