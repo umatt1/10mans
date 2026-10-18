@@ -179,7 +179,7 @@ function lineChart(xs, series, {base} = {}) {
     return out + s.pts.map((v, i) => Number.isFinite(v) ? `<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${c}"><title>${esc(s.name)} · ${esc(xs[i])}: ${f(v)}</title></circle>` : "").join("");
   }).join("");
   const step = Math.max(1, Math.ceil(xs.length / 8));
-  const labels = xs.map((l, i) => i % step === 0 ? `<text x="${x(i)}" y="${H - 6}" fill="#8393a8" font-size="10" text-anchor="middle">${esc(l)}</text>` : "").join("");
+  const labels = xs.map((l, i) => i % step === 0 || i === xs.length - 1 && xs.length > 1 && i % step > step / 2 ? `<text x="${x(i)}" y="${H - 6}" fill="#8393a8" font-size="10" text-anchor="${i === xs.length - 1 && xs.length > 1 ? "end" : "middle"}">${esc(l)}</text>` : "").join("");
   const baseLine = base != null ? `<line x1="${L}" x2="${W - Rr}" y1="${y(base)}" y2="${y(base)}" stroke="#3d4f66" stroke-dasharray="4"/>` : "";
   const ticks = [lo + pad, hi - pad].map(v => `<text x="${L - 4}" y="${y(v) + 3}" fill="#8393a8" font-size="10" text-anchor="end">${f(v, 1)}</text>`).join("");
   const legend = series.length > 1 ? `<div class="legend">${series.map((s, i) => `<span><i style="background:${COLORS[i % 8]}"></i>${esc(s.name)}</span>`).join("")}</div>` : "";
@@ -369,8 +369,8 @@ function playerView(name) {
     `<div class="grid g2">` + box("Percentile vs the group", `<div class="box-body">${radar(axes)}</div>`) +
     box(`${RL()} and K/D per map`, `<div class="box-body">${trend}</div>`) + `</div>` +
     `<div class="notice">Best map: <b>${fdate(best.date)} ${esc(best.map)}</b> (${f(rowRating(best))}, ${best.k}-${best.d}) · Worst: <b>${fdate(worst.date)} ${esc(worst.map)}</b> (${f(rowRating(worst))}, ${worst.k}-${worst.d}) · Consistency is the standard deviation of per-map rating (lower is steadier).</div>` +
-    `<div class="grid g2">` + box("By Scrim day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1, rowClass: teamRow})) +
-    box("By map", table("pm" + name, gcols("map", "Map"), grp(byMap, "map"), {k: "rating"})) + `</div>` +
+    box("By scrim day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1, rowClass: teamRow})) +
+    box("By map", table("pm" + name, gcols("map", "Map"), grp(byMap, "map"), {k: "rating"})) +
     box("Match log", `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th class="l">Team</th><th>Result</th><th>K / D / A</th><th>K/D</th><th>ADR</th><th>HS%</th><th>${RL()}</th></tr></thead><tbody>${log}</tbody></table></div>`);
 }
 
@@ -464,7 +464,7 @@ function compareView(a, b) {
     `<div class="grid g2">` + box("Head to head", `<div class="scroll"><table><tbody>
       <tr><th style="text-align:left">${pl(a)}</th><th style="text-align:center"></th><th>${pl(b)}</th></tr>
       ${line(RL(), "rating", 2)}${line("K/D", "kd", 2)}${line("ADR", "adr", 1)}${line("HS%", "hs", 1)}${line("KPR", "kpr", 2)}${line("Deaths / round", "dpr", 2, true)}${line("Assists / round", "apr", 2)}${line("Maps", "n", 0)}${line("Consistency (lower is steadier)", "sd", 2, true)}</tbody></table></div>`) +
-    box("Rating by Scrim day", `<div class="box-body">${lineChart(dates.map(d => d.slice(5)), [ser(a), ser(b)], {base: 1})}</div>`) + `</div>` +
+    box("Rating by scrim day", `<div class="box-body">${lineChart(dates.map(d => d.slice(5)), [ser(a), ser(b)], {base: 1})}</div>`) + `</div>` +
     box("Shared maps", `<div class="box-body">${shared.length} maps together. ${mates ? `As teammates: ${mates} maps, ${f(wMates / mates * 100, 0)}% wins. ` : ""}${opp ? `As opponents: ${esc(a)} out-rated ${esc(b)} in ${aAhead} of ${opp}. ` : ""}${!mates && !opp ? "Teams are only known for games with a Refrag scoreboard." : ""}</div>` +
       (shared.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th class="l">${esc(a)}</th><th class="l">${esc(b)}</th><th class="l">Relation</th></tr></thead><tbody>${shared.map(g => {
         const x = g.rows.find(r => r.name === a), y = g.rows.find(r => r.name === b);
