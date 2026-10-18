@@ -25,7 +25,7 @@ upload endpoint that validates files. Nothing here is active until you flip `mod
    window.TENMANS = { mode: "supabase", supabaseUrl: "https://<ref>.supabase.co", supabaseAnonKey: "<anon public key>" };
    ```
    The anon key is public by design; the row-level-security policies are what protect writes.
-3. Keep the GitHub Action: it still syncs the Google Sheet into `data/stats.json` every 6 hours, which Vercel redeploys on push.
+3. The Vercel build itself re-reads the Google Sheet on every deploy (see CLAUDE.md, "Refreshing sheet data"); the GitHub Action is manual-only now. Vercel redeploys on push.
 
 ## How uploading works
 Contribute page → sign in → drop the exported `.json` files → Preview → **Publish**. The browser POSTs them to the

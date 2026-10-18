@@ -5,7 +5,7 @@ Static site (no build step) for an in-house CS2 10-man league. Hosted on Vercel;
 ## Data sources
 - **Google Sheet** (public, link-shared): `1RknwngIMQYAuY7AwgZC3bijaTwWZDDh5yw4A6kZpnPM`. One tab per player, columns
   Map, Date, Kills, Death, Assist, KDA, HS %, DMG, Rounds, ADR. `scripts/sync.py` pulls every tab via the gviz CSV
-  endpoint into `data/stats.json`; `.github/workflows/sync.yml` runs it every 6 hours and commits changes.
+  endpoint into `data/stats.json`; `.github/workflows/sync.yml` can run it on demand (no schedule) and commits changes; Vercel builds also run it.
   The player list is hard-coded in `sync.py` (add new tabs there). Tabs Juicy, Megan, Nathan are currently empty.
 - **Refrag** (refrag.gg): no public/official API. The web app (play.refrag.gg) talks to an undocumented
   `api-k8s.refrag.gg` that needs a login, so CI cannot use it. `data/matches.json` was a **one-time import**
@@ -64,8 +64,8 @@ Gotcha: objects created inside the vm have a different prototype, so `harness.ru
 ## Refreshing sheet data (no cron)
 There is deliberately **no schedule** (owner worried about cost). Every Vercel build runs `python3 scripts/sync.py` first (buildCommand in
 `vercel.json`), so *any deploy re-reads the Google Sheet*; if Google/the sheet fails it logs `SHEET SYNC FAILED` and ships the last committed
-`data/stats.json`. Ways to refresh: (1) the Vercel **Deploy Hook** `refresh-sheet-data` (project 10mans, branch main, id I7zwDFNbTR; the URL is a
-secret - list it with `vercel api /v9/projects/<id>`; POST or open it and a ~20s build runs; verified 2026-10-18), (2) Vercel dashboard
+`data/stats.json`. Ways to refresh: (1) the Vercel **Deploy Hook** `refresh-sheet-data` (project 10mans, branch main; the URL is a SECRET
+- never commit it. Vercel dashboard -> project -> Settings -> Git -> Deploy Hooks shows/regenerates it; POST it and a ~20s build runs; verified 2026-10-18), (2) Vercel dashboard
 Deployments -> Redeploy (not tested), (3) any push to main, (4) Actions tab -> Sync stats -> Run workflow (commits stats.json; also reruns on
 pushes touching data/matches/**). The footer "Sheet synced ..." time is when the last build fetched the sheet. Matches in Supabase are live
 immediately and need no refresh. Not built: an in-site refresh button (would need the ingest-match edge function to call the hook, with the hook
