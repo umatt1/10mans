@@ -61,6 +61,16 @@ Ledger SQL tests: paste `supabase/tests/ledger.test.sql` into the SQL editor; it
 Edge function code has no automated tests (no Deno here); it is only exercised through the SQL functions and manual calls.
 Gotcha: objects created inside the vm have a different prototype, so `harness.run` returns JSON copies for `deepEqual`.
 
+## CI/CD
+Push to `main` -> Vercel builds and deploys (git-connected). **Tests gate the deploy:** `vercel.json` sets `buildCommand: "npm test"`, so a
+failing test = failed Vercel build = the previous production deployment keeps serving (verified 2026-10-18 on branch `gate-check` with a
+deliberately failing test: "Command npm test exited with 1"; the same branch with the test removed built Ready). Branch/PR pushes get
+preview deployments that run the same gate. GitHub Actions `Tests` (`test.yml`) runs the same suite and shows a check on commits/PRs;
+`validate.yml` checks match files on PRs; `sync.yml` rebuilds `data/matches.json` + syncs the sheet (every 6h and on match-file pushes) and
+its commit redeploys through the same gate. Not gated / manual: Supabase SQL migrations and the `ingest-match` edge function (applied via the
+dashboard); no branch protection is enabled, so a direct push to main still deploys if (and only if) the build's tests pass.
+Vercel builds on Node 24 with Python available; `npm test` uses `node --test tests/*.test.js` (a directory arg is not portable across Node versions).
+
 ## Hosting
 Deployed on Vercel (https://10mans.vercel.app, project `10mans` under umatt1s-projects, git-connected so pushes auto-deploy). The GitHub Pages copy was turned off on 2026-10-18 at the owner's request. `config.js` + `supabase/` + `vercel.json` + `docs/MIGRATION.md`
 wire in Supabase (project ref sipcpfxjjsxsdozdommz, region us-east-1): `matches` + `aliases` tables seeded, public read via RLS, uploads only through the `ingest-match` edge function (deployed via dashboard; JWT gateway verification must be OFF). In `supabase` mode the site reads matches/aliases from Supabase and `data/matches/` is no longer what the app reads (the GitHub upload flow is hidden). Sheet stats still come from `data/stats.json`.
