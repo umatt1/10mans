@@ -181,3 +181,5 @@ test("sheet-only games have no team colours (teams are unknown there)", async ()
   const html = run(`gameHtml(DB.games.find(g => g.date === '2026-03-28' && g.map === 'Nuke'))`);
   assert.doesNotMatch(html, /<tr class="t[AB]">/);
 });
+
+test("TEMPORARY gate check: this must fail the build", () => { assert.equal(1, 2); });
