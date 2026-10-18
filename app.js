@@ -228,8 +228,18 @@ function sourceNotice() {
 function leaderRows(rows) {
   const g = {};
   rows.forEach(r => (g[r.name] ??= []).push(r));
-  return Object.entries(g).map(([name, rs]) => ({name, ...agg(rs)})).filter(p => p.n >= FILT.min);
+  return Object.entries(g).map(([name, rs]) => {
+    // A/B only mean something within one scrim day, so a team is attached only to single-day groups.
+    const one = new Set(rs.map(r => r.date)).size === 1, ts = new Set(rs.map(r => r.team).filter(Boolean));
+    return {name, ...agg(rs), date: one ? rs[0].date : null, team: one && ts.size === 1 ? [...ts][0] : null};
+  }).filter(p => p.n >= FILT.min);
 }
+const teamCol = () => ({k: "team", h: "Team", l: 1, v: r => r.team ? teamName(r.date, r.team) : "", f: r => r.team ? teamPill(r.date, r.team) : ""});
+const teamRow = r => r.team ? "t" + r.team : "";
+const teamDot = (name, date) => {
+  const r = date && DB.rows.find(x => x.name === name && x.date === date && x.team);
+  return r ? `<i class="dot t${r.team}" title="${esc(teamName(date, r.team))}"></i>` : "";
+};
 
 function overview() {
   const rows = filtered(), L = leaderRows(rows);
@@ -244,6 +254,7 @@ function overview() {
     {k: "winPct", h: "Win%", f: r => r.winPct == null ? "–" : f(r.winPct, 0) + "%"},
     {k: "rating", h: RL(), f: r => rt(r.rating)},
   ];
+  if (FILT.day) cols.splice(1, 0, teamCol());
   const top = [...L].sort((a, b) => b.rating - a.rating).slice(0, 10);
   const lastDay = DB.days[0], ser = DB.series[lastDay];
   const dayRows = DB.rows.filter(r => r.date === lastDay), mvp = leaderRows(dayRows).sort((a, b) => b.rating - a.rating)[0];
@@ -255,11 +266,11 @@ function overview() {
       <div class="card"><b>${days.size}</b><span>Scrim days</span></div>
       <div class="card"><b>${rows.reduce((t, r) => t + r.k, 0)}</b><span>Kills</span></div>
       <div class="card"><b>${f(mean(rows.map(r => r.adr)), 1)}</b><span>Avg ADR</span></div></div>` +
-    (lastDay && !FILT.day ? box(`Latest scrim day · ${fdate(lastDay)}`, `<div class="box-body">${ser ? `${esc(teamName(lastDay, "A"))} <b>${ser.wins.A}</b> – <b>${ser.wins.B}</b> ${esc(teamName(lastDay, "B"))} · ` : ""}${DB.byDate[lastDay].length} maps · MVP ${mvp ? `${pl(mvp.name)} (${rt(mvp.rating)})` : "–"}</div>`, `<a class="btn" href="#days/${lastDay}">Open</a>`) : "") +
+    (lastDay && !FILT.day ? box(`Latest scrim day · ${fdate(lastDay)}`, `<div class="box-body">${ser ? `${esc(teamName(lastDay, "A"))} <b>${ser.wins.A}</b> – <b>${ser.wins.B}</b> ${esc(teamName(lastDay, "B"))} · ` : ""}${DB.byDate[lastDay].length} maps · MVP ${mvp ? `${mvp.team ? teamPill(lastDay, mvp.team) + " " : ""}${pl(mvp.name)} (${rt(mvp.rating)})` : "–"}</div>`, `<a class="btn" href="#days/${lastDay}">Open</a>`) : "") +
     `<div class="grid g2">` +
     box("Top players", `<div class="box-body">${bars(top.map(p => ({label: pl(p.name), value: p.rating})), {max: Math.max(1.6, ...top.map(p => p.rating))})}</div>`) +
     box("ADR vs K/D", `<div class="box-body">${scatter(L.map(p => ({name: p.name, x: p.adr, y: p.kd})), "ADR", "K/D")}</div>`) + `</div>` +
-    box("Leaderboard", table("lead", cols, L, {k: "rating"}), `<span class="tip">click a header to sort</span>`);
+    box("Leaderboard", table("lead", cols, L, {k: "rating", rowClass: teamRow}), `<span class="tip">click a header to sort${FILT.day ? "" : " · teams show when you pick a scrim day in Filters (A/B only mean something within one day)"}</span>`);
 }
 
 function teamName(date, side) {
@@ -312,15 +323,15 @@ function daysView(focus) {
     const maps = `<div class="maps">${gs.map(g => `<a class="mapcard" href="#days/${d}/g${g.i}"><b>${esc(g.map)}</b><span class="sc">${g.score ? g.score.join(" – ") : "–"}</span></a>`).join("")}</div>`;
     const mvp = L[0];
     return `<div id="day-${d}">` + box(`${fdate(d)} · ${gs.length} map${gs.length === 1 ? "" : "s"}`,
-      header + maps + (mvp ? `<div class="box-body" style="padding-top:0">MVP: ${pl(mvp.name)} ${rt(mvp.rating)} · ${mvp.k}-${mvp.d} · ${f(mvp.adr, 1)} ADR</div>` : "") +
+      header + maps + (mvp ? `<div class="box-body" style="padding-top:0">MVP: ${mvp.team ? teamPill(d, mvp.team) + " " : ""}${pl(mvp.name)} ${rt(mvp.rating)} · ${mvp.k}-${mvp.d} · ${f(mvp.adr, 1)} ADR</div>` : "") +
       `<div class="box-head" style="border-top:1px solid var(--line)">Maps</div>${gs.map(g => gameHtml(g, focus === "g" + g.i)).join("")}` +
-      (L.length ? `<details class="game"><summary><b>Day leaderboard</b></summary><div class="gbody">${table("day" + d, dayCols(), L, {k: "rating"})}</div></details>` : ""),
+      (L.length ? `<details class="game"><summary><b>Day leaderboard</b></summary><div class="gbody">${table("day" + d, dayCols(L.some(p => p.team)), L, {k: "rating", rowClass: teamRow})}</div></details>` : ""),
       `${dlBtn("d:" + d + ":csv")} ${dlBtn("d:" + d + ":json", "↓ JSON")}`) + `</div>`;
   }).join("");
   $("#app").innerHTML = `<h1>Scrim days</h1>${sourceNotice()}<div class="box"><div class="box-body">Jump to: ${DB.days.map(d => `<a class="btn" href="#days/${d}">${fdate(d)}</a>`).join(" ")}</div></div>${html}`;
 }
-const dayCols = () => [
-  {k: "name", h: "Player", l: 1, f: r => pl(r.name)}, {k: "n", h: "Maps", f: r => r.n},
+const dayCols = withTeam => [
+  {k: "name", h: "Player", l: 1, f: r => pl(r.name)}, ...(withTeam ? [teamCol()] : []), {k: "n", h: "Maps", f: r => r.n},
   {k: "kd", h: "K/D", f: r => f(r.kd)}, {k: "adr", h: "ADR", f: r => f(r.adr, 1)}, {k: "hs", h: "HS%", f: r => f(r.hs, 0) + "%"},
   {k: "rating", h: RL(), f: r => rt(r.rating)}];
 
@@ -343,8 +354,11 @@ function playerView(name) {
   const trend = lineChart(xs, [{name: RL(), pts: sorted.map(rowRating)}, {name: "K/D", pts: sorted.map(r => r.k / (r.d || 1))}], {base: 1});
   const byDay = {}, byMap = {}, roles = {};
   sorted.forEach(r => { (byDay[r.date] ??= []).push(r); (byMap[r.map] ??= []).push(r); (r.roles || []).forEach(x => roles[x] = (roles[x] || 0) + 1); });
-  const grp = (o, key, label) => Object.entries(o).map(([k, rs]) => ({[key]: k, ...agg(rs)}));
-  const gcols = (key, h, link) => [{k: key, h, l: 1, f: r => link ? `<a class="pl" href="#days/${r[key]}">${fdate(r[key])}</a>` : esc(r[key])},
+  const grp = (o, key) => Object.entries(o).map(([k, rs]) => {
+    const ts = new Set(rs.map(r => r.team).filter(Boolean));
+    return {[key]: k, ...agg(rs), team: key === "date" && ts.size === 1 ? [...ts][0] : null};
+  });
+  const gcols = (key, h, link) => [{k: key, h, l: 1, f: r => link ? `<a class="pl" href="#days/${r[key]}">${fdate(r[key])}</a>` : esc(r[key])}, ...(key === "date" ? [teamCol()] : []),
     {k: "n", h: "Maps", f: r => r.n}, {k: "kd", h: "K/D", f: r => f(r.kd)}, {k: "adr", h: "ADR", f: r => f(r.adr, 1)}, {k: "hs", h: "HS%", f: r => f(r.hs, 0) + "%"},
     {k: "winPct", h: "Win%", f: r => r.winPct == null ? "–" : f(r.winPct, 0) + "%"}, {k: "rating", h: RL(), f: r => rt(r.rating)}];
   const log = sorted.slice().reverse().map(r => `<tr><td><a class="pl" href="#days/${r.date}/g${r.g}">${fdate(r.date)}</a></td><td class="l">${esc(r.map)}</td><td class="l">${r.team ? teamPill(r.date, r.team) : ""}</td><td>${r.win == null ? "–" : r.win ? '<span class="pos">W</span>' : '<span class="neg">L</span>'}</td><td>${r.k} / ${r.d} / ${r.a}</td><td>${f(r.k / (r.d || 1))}</td><td>${f(r.adr, 1)}</td><td>${f(r.hs, 0)}%</td><td>${rt(rowRating(r))}</td></tr>`).join("");
@@ -355,7 +369,7 @@ function playerView(name) {
     `<div class="grid g2">` + box("Percentile vs the group", `<div class="box-body">${radar(axes)}</div>`) +
     box(`${RL()} and K/D per map`, `<div class="box-body">${trend}</div>`) + `</div>` +
     `<div class="notice">Best map: <b>${fdate(best.date)} ${esc(best.map)}</b> (${f(rowRating(best))}, ${best.k}-${best.d}) · Worst: <b>${fdate(worst.date)} ${esc(worst.map)}</b> (${f(rowRating(worst))}, ${worst.k}-${worst.d}) · Consistency is the standard deviation of per-map rating (lower is steadier).</div>` +
-    `<div class="grid g2">` + box("By Scrim day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1})) +
+    `<div class="grid g2">` + box("By Scrim day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1, rowClass: teamRow})) +
     box("By map", table("pm" + name, gcols("map", "Map"), grp(byMap, "map"), {k: "rating"})) + `</div>` +
     box("Match log", `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th class="l">Team</th><th>Result</th><th>K / D / A</th><th>K/D</th><th>ADR</th><th>HS%</th><th>${RL()}</th></tr></thead><tbody>${log}</tbody></table></div>`);
 }
@@ -389,7 +403,7 @@ function recordsView() {
   const rows = DB.rows;
   const top = (title, filterFn, val, fmt, n = 5, asc = false) => {
     const rs = rows.filter(filterFn).sort((a, b) => asc ? val(a) - val(b) : val(b) - val(a)).slice(0, n);
-    return box(title, `<div class="scroll"><table><tbody>${rs.map((r, i) => `<tr><td>${i + 1}. ${pl(r.name)}</td><td class="muted"><a class="pl" href="#days/${r.date}/g${r.g}">${fdate(r.date)} · ${esc(r.map)}</a></td><td><b>${fmt(r)}</b></td></tr>`).join("")}</tbody></table></div>`);
+    return box(title, `<div class="scroll"><table><tbody>${rs.map((r, i) => `<tr><td>${i + 1}. ${r.team ? `<i class="dot t${r.team}" title="${esc(teamName(r.date, r.team))}"></i>` : ""}${pl(r.name)}</td><td class="muted"><a class="pl" href="#days/${r.date}/g${r.g}">${fdate(r.date)} · ${esc(r.map)}</a></td><td><b>${fmt(r)}</b></td></tr>`).join("")}</tbody></table></div>`);
   };
   const scored = DB.games.filter(g => g.score);
   const gl = (title, fn) => box(title, `<div class="scroll"><table><tbody>${[...scored].sort(fn).slice(0, 5).map(g => `<tr><td><a class="pl" href="#days/${g.date}/g${g.i}">${fdate(g.date)} · ${esc(g.map)}</a></td><td><b>${g.score.join(" – ")}</b></td></tr>`).join("")}</tbody></table></div>`);
@@ -451,7 +465,12 @@ function compareView(a, b) {
       <tr><th style="text-align:left">${pl(a)}</th><th style="text-align:center"></th><th>${pl(b)}</th></tr>
       ${line(RL(), "rating", 2)}${line("K/D", "kd", 2)}${line("ADR", "adr", 1)}${line("HS%", "hs", 1)}${line("KPR", "kpr", 2)}${line("Deaths / round", "dpr", 2, true)}${line("Assists / round", "apr", 2)}${line("Maps", "n", 0)}${line("Consistency (lower is steadier)", "sd", 2, true)}</tbody></table></div>`) +
     box("Rating by Scrim day", `<div class="box-body">${lineChart(dates.map(d => d.slice(5)), [ser(a), ser(b)], {base: 1})}</div>`) + `</div>` +
-    box("Shared maps", `<div class="box-body">${shared.length} maps together. ${mates ? `As teammates: ${mates} maps, ${f(wMates / mates * 100, 0)}% wins. ` : ""}${opp ? `As opponents: ${esc(a)} out-rated ${esc(b)} in ${aAhead} of ${opp}. ` : ""}${!mates && !opp ? "Teams are only known for games with a Refrag scoreboard." : ""}</div>`);
+    box("Shared maps", `<div class="box-body">${shared.length} maps together. ${mates ? `As teammates: ${mates} maps, ${f(wMates / mates * 100, 0)}% wins. ` : ""}${opp ? `As opponents: ${esc(a)} out-rated ${esc(b)} in ${aAhead} of ${opp}. ` : ""}${!mates && !opp ? "Teams are only known for games with a Refrag scoreboard." : ""}</div>` +
+      (shared.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th class="l">${esc(a)}</th><th class="l">${esc(b)}</th><th class="l">Relation</th></tr></thead><tbody>${shared.map(g => {
+        const x = g.rows.find(r => r.name === a), y = g.rows.find(r => r.name === b);
+        const pill = r => r.team ? teamPill(g.date, r.team) : "<span class='muted'>unknown</span>";
+        return `<tr><td>${fdate(g.date)}</td><td class="l">${esc(g.map)}</td><td class="l">${pill(x)}</td><td class="l">${pill(y)}</td><td class="l">${!x.team || !y.team ? "–" : x.team === y.team ? "teammates" : "opponents"}</td></tr>`;
+      }).join("")}</tbody></table></div>` : ""));
 }
 
 /* ---------- pivot ---------- */
@@ -493,12 +512,12 @@ function pivotView() {
   const flat = C.rkeys.flatMap(a => C.cells[a]).filter(Number.isFinite);
   const lo = Math.min(...flat), hi = Math.max(...flat);
   const fmt = v => v == null || !Number.isFinite(v) ? "" : f(v, M.d);
-  const label = k => P.rows === "player" ? pl(k) : (P.rows === "date" ? `<a class="pl" href="#days/${k}">${fdate(k)}</a>` : esc(k));
+  const label = k => P.rows === "player" ? teamDot(k, P.day) + pl(k) : (P.rows === "date" ? `<a class="pl" href="#days/${k}">${fdate(k)}</a>` : esc(k));
   const tbl = `<div class="scroll"><table><thead><tr><th>${DIM[P.rows].h}${P.cols ? ` \\ ${DIM[P.cols].h}` : ""}</th>${P.cols ? C.ckeys.map(c => `<th>${esc(P.cols === "date" ? c.slice(5) : c)}</th>`).join("") : ""}<th>${P.cols ? "All" : M.h}</th></tr></thead><tbody>${C.rkeys.map(a =>
     `<tr><td>${label(a)}</td>${P.cols ? C.cells[a].map(v => `<td class="heat" style="${heatStyle(v, lo, hi)}">${fmt(v)}</td>`).join("") : ""}<td class="heat" style="${P.cols ? "" : heatStyle(C.total[a], lo, hi)}"><b>${fmt(C.total[a])}</b></td></tr>`).join("")}</tbody></table></div>`;
   let chart = "";
   if (P.chart === "bars" && C.rkeys.length) {
-    const items = C.rkeys.slice(0, 25).map(a => ({label: P.rows === "player" ? pl(a) : esc(P.rows === "date" ? fdate(a) : a), value: C.total[a] ?? 0}));
+    const items = C.rkeys.slice(0, 25).map(a => ({label: P.rows === "player" ? teamDot(a, P.day) + pl(a) : esc(P.rows === "date" ? fdate(a) : a), value: C.total[a] ?? 0}));
     chart = bars(items, {fmt});
   } else if (P.chart === "lines") {
     if (P.cols) chart = lineChart(C.ckeys.map(c => P.cols === "date" ? c.slice(5) : c), C.rkeys.slice(0, 8).map(a => ({name: a, pts: C.cells[a].map(v => v ?? NaN)})));

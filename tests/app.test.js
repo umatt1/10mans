@@ -181,3 +181,55 @@ test("sheet-only games have no team colours (teams are unknown there)", async ()
   const html = run(`gameHtml(DB.games.find(g => g.date === '2026-03-28' && g.map === 'Nuke'))`);
   assert.doesNotMatch(html, /<tr class="t[AB]">/);
 });
+
+test("leaderboards: teams only attach to single-day groups (A/B are per-day labels)", async () => {
+  const {run} = await load();
+  const day = run(`leaderRows(DB.rows.filter(r => r.date === '2026-10-17')).map(p => [p.name, p.team])`);
+  assert.equal(day.filter(([, t]) => t === "A").length, 5);
+  assert.equal(day.filter(([, t]) => t === "B").length, 5);
+  assert.equal(run(`leaderRows(DB.rows).every(p => p.team === null)`), true, "all-time rows must not claim a team");
+});
+
+test("Overview leaderboard: tinted rows + Team column for a chosen day, a hint (no colours) for all days", async () => {
+  const {run, el} = await load();
+  run("FILT.day = ''; overview()");
+  let html = el("#app").innerHTML;
+  assert.doesNotMatch(html, /<tr class="t[AB]">/);
+  assert.match(html, /teams show when you pick a scrim day/);
+  run("FILT.day = '2026-10-17'; overview()");
+  html = el("#app").innerHTML;
+  assert.equal((html.match(/<tr class="tA">/g) || []).length, 5);
+  assert.equal((html.match(/<tr class="tB">/g) || []).length, 5);
+  assert.match(html, /<th[^>]*data-k="team"/);
+});
+
+test("scrim-day page: the day leaderboard has a Team column and the MVP shows their team", async () => {
+  const {run, el} = await load();
+  run("daysView()");
+  const html = el("#app").innerHTML;
+  const oct = html.slice(html.indexOf('id="day-2026-10-17"'), html.indexOf('id="day-2026-04-25"'));
+  assert.match(oct, /Day leaderboard/);
+  const board = oct.slice(oct.indexOf("Day leaderboard"), oct.indexOf("</details>", oct.indexOf("Day leaderboard")));
+  assert.equal((board.match(/<tr class="tA">/g) || []).length, 5, "day leaderboard alone: 5 team A rows");
+  assert.equal((board.match(/<tr class="tB">/g) || []).length, 5, "day leaderboard alone: 5 team B rows");
+  assert.match(board, /data-k="team"/);
+  assert.match(oct, /MVP: <span class="pill t[AB]">/);
+  const march = html.slice(html.indexOf('id="day-2026-03-28"'), html.indexOf('id="day-2026-02-22"'));
+  assert.doesNotMatch(march, /pill t[AB]/, "a sheet-only day has no known teams");
+});
+
+test("records, pivot, player page and compare show teams where known", async () => {
+  const {run, el} = await load();
+  run("recordsView()");
+  assert.match(el("#app").innerHTML, /<i class="dot t[AB]"/);
+  run("location.hash = '#pivot?rows=player&day=2026-10-17&val=rating'; pivotView()");
+  assert.match(el("#app").innerHTML, /<i class="dot t[AB]"/);
+  run("location.hash = '#pivot?rows=player&val=rating'; pivotView()");
+  assert.doesNotMatch(el("#app").innerHTML, /<i class="dot t[AB]"/, "no day chosen: no dots");
+  run("playerView('Matt')");
+  assert.match(el("#app").innerHTML, /data-k="team"/);
+  run("compareView('Matt', 'Will')");
+  assert.match(el("#app").innerHTML, /teammates/);
+  run("compareView('Matt', 'Cristian')");
+  assert.match(el("#app").innerHTML, /opponents/);
+});

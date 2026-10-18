@@ -98,5 +98,5 @@ wire in Supabase (project ref sipcpfxjjsxsdozdommz, region us-east-1): `matches`
 `index.html` + `app.js` + `style.css` (HLTV-inspired). Hash routes: `#` overview, `#days[/date[/gN]]`, `#players`, `#p/<name>`,
 `#maps`, `#records`, `#compare/<a>/<b>`, `#pivot?rows=&cols=&val=&chart=&day=&map=&min=`, `#contribute`.
 Header toggle switches between the Google Sheet (all history, estimated "Rating*") and Refrag-only (official Rating/KAST),
-persisted in localStorage. Teams per scrim day come from the first Refrag scoreboard; sheet-only days have no teams/series.
+persisted in localStorage. Teams per scrim day come from the first Refrag scoreboard; team A/B colours (blue/orange) appear on scoreboards, the scrim-day header, day leaderboard + MVP, the Overview leaderboard *only when a single scrim day is filtered* (A/B are per-day labels, so all-time rows deliberately carry no team), records (dots), pivot player labels (only with a day chosen), player log + by-day table, and compare's shared-maps table; sheet-only days have no teams/series.
 Matches added via the Contribute page preview live in localStorage only ("local"). Preview locally with `python3 -m http.server`.
