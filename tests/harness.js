@@ -3,6 +3,9 @@
 const fs = require("fs"), path = require("path"), vm = require("vm");
 const root = path.join(__dirname, "..");
 const readJson = f => JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
+// The app tests run on a frozen snapshot, never the live data/ files: the sheet sync commits new rows whenever the
+// group plays, and tests that pinned exact counts would then fail the deploy gate and block that very data.
+const fixture = f => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", f), "utf8"));
 
 function makeEl() {
   return {innerHTML: "", innerText: "", textContent: "", value: "", hidden: false, className: "", dataset: {}, style: {},
@@ -18,7 +21,7 @@ async function load({mode = "static", src = "sheet", local = [], session = null,
     querySelector: $el, querySelectorAll: () => [], getElementById: () => null, createElement: makeEl, body: makeEl(),
     addEventListener: (t, fn) => (listeners[t] ??= []).push(fn),
   };
-  const matches = readJson("data/matches.json"), stats = readJson("data/stats.json");
+  const matches = fixture("matches.json"), stats = fixture("stats.json");
   const defaultFetch = async (url, opts = {}) => {
     const ok = body => ({ok: true, status: 200, json: async () => body});
     if (opts.method === "POST") { posts.push({url, body: JSON.parse(opts.body)}); await new Promise(r => setTimeout(r, 30)); return ok({inserted: 1, results: [{ok: true}]}); }
