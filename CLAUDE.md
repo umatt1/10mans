@@ -45,5 +45,5 @@ are the ready-but-untested path to Vercel + Supabase with shared-login uploads.
 `index.html` + `app.js` + `style.css` (HLTV-inspired). Hash routes: `#` overview, `#days[/date[/gN]]`, `#players`, `#p/<name>`,
 `#maps`, `#records`, `#compare/<a>/<b>`, `#pivot?rows=&cols=&val=&chart=&day=&map=&min=`, `#contribute`.
 Header toggle switches between the Google Sheet (all history, estimated "Rating*") and Refrag-only (official Rating/KAST),
-persisted in localStorage. Teams per LAN day come from the first Refrag scoreboard; sheet-only days have no teams/series.
+persisted in localStorage. Teams per scrim day come from the first Refrag scoreboard; sheet-only days have no teams/series.
 Matches added via the Contribute page preview live in localStorage only ("local"). Preview locally with `python3 -m http.server`.

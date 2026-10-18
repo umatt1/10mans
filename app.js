@@ -114,7 +114,7 @@ function buildDB() {
   games.sort((a, b) => a.date.localeCompare(b.date) || order(a, b));
   games.forEach((g, i) => { g.i = i; g.score = g.ref?.score || null; g.rows.forEach(r => r.g = i); });
 
-  // Teams: the first scoreboard of a LAN day fixes the two rosters; later games are matched against them.
+  // Teams: the first scoreboard of a Scrim day fixes the two rosters; later games are matched against them.
   const series = {};
   const byDate = {};
   games.forEach(g => (byDate[g.date] ??= []).push(g));
@@ -212,7 +212,7 @@ const pctOf = (name, fn) => {
 /* ---------- filtering ---------- */
 const filtered = () => DB.rows.filter(r => (!FILT.day || r.date === FILT.day) && (!FILT.map || r.map === FILT.map));
 const filterBar = () => `<div class="box-body pivot-ctl">
-  <label class="f">LAN day <select data-act="filt" data-f="day"><option value="">All</option>${DB.days.map(d => `<option value="${d}"${FILT.day === d ? " selected" : ""}>${fdate(d)}</option>`).join("")}</select></label>
+  <label class="f">Scrim day <select data-act="filt" data-f="day"><option value="">All</option>${DB.days.map(d => `<option value="${d}"${FILT.day === d ? " selected" : ""}>${fdate(d)}</option>`).join("")}</select></label>
   <label class="f">Map <select data-act="filt" data-f="map"><option value="">All</option>${DB.maps.map(m => `<option${FILT.map === m ? " selected" : ""}>${m}</option>`).join("")}</select></label>
   <label class="f">Min maps <select data-act="filt" data-f="min">${[1, 2, 3, 5, 8].map(n => `<option${FILT.min === n ? " selected" : ""}>${n}</option>`).join("")}</select></label></div>`;
 
@@ -221,7 +221,7 @@ function sourceNotice() {
   const full = DB.games.filter(g => g.ref?.win).length, scoreOnly = DB.games.filter(g => g.ref && !g.ref.win).length;
   return SRC === "refrag"
     ? `<div class="notice">Showing <b>official Refrag data</b>: ${full} match${full === 1 ? "" : "es"} with full scoreboards (real Refrag Rating &amp; KAST)${scoreOnly ? `, plus ${scoreOnly} score-only demo${scoreOnly === 1 ? "" : "s"}` : ""}. Switch to <b>Google Sheet</b> for the full history.</div>`
-    : `<div class="notice">Showing the <b>Google Sheet</b> history (${DB.games.length} maps). Rating* is estimated from kills, deaths, assists and ADR; ${full} match${full === 1 ? " has" : "es have"} an official Refrag scoreboard on the <a href="#days">LAN Days</a> page.</div>`;
+    : `<div class="notice">Showing the <b>Google Sheet</b> history (${DB.games.length} maps). Rating* is estimated from kills, deaths, assists and ADR; ${full} match${full === 1 ? " has" : "es have"} an official Refrag scoreboard on the <a href="#days">Scrim Days</a> page.</div>`;
 }
 
 function leaderRows(rows) {
@@ -251,10 +251,10 @@ function overview() {
     `<div class="cards" style="margin-bottom:14px">
       <div class="card"><b>${L.length}</b><span>Players</span></div>
       <div class="card"><b>${games.size}</b><span>Maps</span></div>
-      <div class="card"><b>${days.size}</b><span>LAN days</span></div>
+      <div class="card"><b>${days.size}</b><span>Scrim days</span></div>
       <div class="card"><b>${rows.reduce((t, r) => t + r.k, 0)}</b><span>Kills</span></div>
       <div class="card"><b>${f(mean(rows.map(r => r.adr)), 1)}</b><span>Avg ADR</span></div></div>` +
-    (lastDay && !FILT.day ? box(`Latest LAN day · ${fdate(lastDay)}`, `<div class="box-body">${ser ? `${esc(teamName(lastDay, "A"))} <b>${ser.wins.A}</b> – <b>${ser.wins.B}</b> ${esc(teamName(lastDay, "B"))} · ` : ""}${DB.byDate[lastDay].length} maps · MVP ${mvp ? `${pl(mvp.name)} (${rt(mvp.rating)})` : "–"}</div>`, `<a class="btn" href="#days/${lastDay}">Open</a>`) : "") +
+    (lastDay && !FILT.day ? box(`Latest scrim day · ${fdate(lastDay)}`, `<div class="box-body">${ser ? `${esc(teamName(lastDay, "A"))} <b>${ser.wins.A}</b> – <b>${ser.wins.B}</b> ${esc(teamName(lastDay, "B"))} · ` : ""}${DB.byDate[lastDay].length} maps · MVP ${mvp ? `${pl(mvp.name)} (${rt(mvp.rating)})` : "–"}</div>`, `<a class="btn" href="#days/${lastDay}">Open</a>`) : "") +
     `<div class="grid g2">` +
     box("Top players", `<div class="box-body">${bars(top.map(p => ({label: pl(p.name), value: p.rating})), {max: Math.max(1.6, ...top.map(p => p.rating))})}</div>`) +
     box("ADR vs K/D", `<div class="box-body">${scatter(L.map(p => ({name: p.name, x: p.adr, y: p.kd})), "ADR", "K/D")}</div>`) + `</div>` +
@@ -311,7 +311,7 @@ function daysView(focus) {
       (L.length ? `<details class="game"><summary><b>Day leaderboard</b></summary><div class="gbody">${table("day" + d, dayCols(), L, {k: "rating"})}</div></details>` : ""),
       `${dlBtn("d:" + d + ":csv")} ${dlBtn("d:" + d + ":json", "↓ JSON")}`) + `</div>`;
   }).join("");
-  $("#app").innerHTML = `<h1>LAN days</h1>${sourceNotice()}<div class="box"><div class="box-body">Jump to: ${DB.days.map(d => `<a class="btn" href="#days/${d}">${fdate(d)}</a>`).join(" ")}</div></div>${html}`;
+  $("#app").innerHTML = `<h1>Scrim days</h1>${sourceNotice()}<div class="box"><div class="box-body">Jump to: ${DB.days.map(d => `<a class="btn" href="#days/${d}">${fdate(d)}</a>`).join(" ")}</div></div>${html}`;
 }
 const dayCols = () => [
   {k: "name", h: "Player", l: 1, f: r => pl(r.name)}, {k: "n", h: "Maps", f: r => r.n},
@@ -349,7 +349,7 @@ function playerView(name) {
     `<div class="grid g2">` + box("Percentile vs the group", `<div class="box-body">${radar(axes)}</div>`) +
     box(`${RL()} and K/D per map`, `<div class="box-body">${trend}</div>`) + `</div>` +
     `<div class="notice">Best map: <b>${fdate(best.date)} ${esc(best.map)}</b> (${f(rowRating(best))}, ${best.k}-${best.d}) · Worst: <b>${fdate(worst.date)} ${esc(worst.map)}</b> (${f(rowRating(worst))}, ${worst.k}-${worst.d}) · Consistency is the standard deviation of per-map rating (lower is steadier).</div>` +
-    `<div class="grid g2">` + box("By LAN day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1})) +
+    `<div class="grid g2">` + box("By Scrim day", table("pd" + name, gcols("date", "Day", true), grp(byDay, "date"), {k: "date", dir: -1})) +
     box("By map", table("pm" + name, gcols("map", "Map"), grp(byMap, "map"), {k: "rating"})) + `</div>` +
     box("Match log", `<div class="scroll"><table><thead><tr><th>Date</th><th class="l">Map</th><th>Result</th><th>K / D / A</th><th>K/D</th><th>ADR</th><th>HS%</th><th>${RL()}</th></tr></thead><tbody>${log}</tbody></table></div>`);
 }
@@ -396,7 +396,7 @@ function recordsView() {
   // MVPs
   const mvps = {};
   DB.days.forEach(d => { const m = leaderRows(rows.filter(r => r.date === d)).sort((a, b) => b.rating - a.rating)[0]; if (m) mvps[m.name] = (mvps[m.name] || 0) + 1; });
-  const mvpBox = box("LAN day MVPs", `<div class="scroll"><table><tbody>${Object.entries(mvps).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n, c]) => `<tr><td>${pl(n)}</td><td><b>${c}</b></td></tr>`).join("")}</tbody></table></div>`);
+  const mvpBox = box("Scrim day MVPs", `<div class="scroll"><table><tbody>${Object.entries(mvps).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n, c]) => `<tr><td>${pl(n)}</td><td><b>${c}</b></td></tr>`).join("")}</tbody></table></div>`);
   // duos
   const pairs = {};
   DB.games.forEach(g => {
@@ -444,15 +444,15 @@ function compareView(a, b) {
     `<div class="grid g2">` + box("Head to head", `<div class="scroll"><table><tbody>
       <tr><th style="text-align:left">${pl(a)}</th><th style="text-align:center"></th><th>${pl(b)}</th></tr>
       ${line(RL(), "rating", 2)}${line("K/D", "kd", 2)}${line("ADR", "adr", 1)}${line("HS%", "hs", 1)}${line("KPR", "kpr", 2)}${line("Deaths / round", "dpr", 2, true)}${line("Assists / round", "apr", 2)}${line("Maps", "n", 0)}${line("Consistency (lower is steadier)", "sd", 2, true)}</tbody></table></div>`) +
-    box("Rating by LAN day", `<div class="box-body">${lineChart(dates.map(d => d.slice(5)), [ser(a), ser(b)], {base: 1})}</div>`) + `</div>` +
+    box("Rating by Scrim day", `<div class="box-body">${lineChart(dates.map(d => d.slice(5)), [ser(a), ser(b)], {base: 1})}</div>`) + `</div>` +
     box("Shared maps", `<div class="box-body">${shared.length} maps together. ${mates ? `As teammates: ${mates} maps, ${f(wMates / mates * 100, 0)}% wins. ` : ""}${opp ? `As opponents: ${esc(a)} out-rated ${esc(b)} in ${aAhead} of ${opp}. ` : ""}${!mates && !opp ? "Teams are only known for games with a Refrag scoreboard." : ""}</div>`);
 }
 
 /* ---------- pivot ---------- */
 const DIM = {
-  player: {h: "Player", f: r => r.name}, map: {h: "Map", f: r => r.map}, date: {h: "LAN day", f: r => r.date},
+  player: {h: "Player", f: r => r.name}, map: {h: "Map", f: r => r.map}, date: {h: "Scrim day", f: r => r.date},
   month: {h: "Month", f: r => r.date.slice(0, 7)}, result: {h: "Result", f: r => r.win == null ? "Unknown" : r.win ? "Win" : "Loss"},
-  role: {h: "Role", f: r => r.roles?.[0] || "Unknown"}, team: {h: "Team (per LAN day)", f: r => r.team ? teamName(r.date, r.team) : "Unknown"},
+  role: {h: "Role", f: r => r.roles?.[0] || "Unknown"}, team: {h: "Team (per scrim day)", f: r => r.team ? teamName(r.date, r.team) : "Unknown"},
 };
 const MEAS = {
   rating: {h: "Rating", f: g => g.rating, d: 2}, kd: {h: "K/D", f: g => g.kd, d: 2}, adr: {h: "ADR", f: g => g.adr, d: 1},
@@ -504,7 +504,7 @@ function pivotView() {
       <label class="f">Columns <select data-act="pv" id="pv-cols">${opt(DIM, P.cols, "(none)")}</select></label>
       <label class="f">Value <select data-act="pv" id="pv-val">${opt(MEAS, P.val)}</select></label>
       <label class="f">Chart <select data-act="pv" id="pv-chart">${[["bars", "Bars"], ["lines", "Lines"], ["none", "Table only"]].map(([k, v]) => `<option value="${k}"${P.chart === k ? " selected" : ""}>${v}</option>`).join("")}</select></label>
-      <label class="f">LAN day <select data-act="pv" id="pv-day"><option value="">All</option>${DB.days.map(d => `<option value="${d}"${P.day === d ? " selected" : ""}>${fdate(d)}</option>`).join("")}</select></label>
+      <label class="f">Scrim day <select data-act="pv" id="pv-day"><option value="">All</option>${DB.days.map(d => `<option value="${d}"${P.day === d ? " selected" : ""}>${fdate(d)}</option>`).join("")}</select></label>
       <label class="f">Map <select data-act="pv" id="pv-map"><option value="">All</option>${DB.maps.map(m => `<option${P.map === m ? " selected" : ""}>${m}</option>`).join("")}</select></label>
       <label class="f">Min maps <select data-act="pv" id="pv-min">${[1, 2, 3, 5, 8].map(n => `<option${P.min === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>
     </div><div class="box-body tip" style="padding-top:0">K/D, ADR, HS% and ratings are recalculated over each group (total kills ÷ total deaths, damage ÷ rounds), not averaged per map. The URL holds your setup, so you can bookmark or share it.</div>`, dlBtn("pivot", "↓ Pivot CSV")) +
@@ -696,7 +696,7 @@ document.addEventListener("input", e => { if (e.target.dataset.act === "search")
 // A file dropped outside the zone should not navigate away from the page.
 ["dragover", "drop"].forEach(ev => window.addEventListener(ev, e => { if (!e.target.closest?.("#drop")) e.preventDefault(); }));
 
-const NAV = [["", "Overview"], ["days", "LAN Days"], ["players", "Players"], ["maps", "Maps"], ["records", "Records"], ["compare", "Compare"], ["pivot", "Pivot"], ["contribute", "Contribute"]];
+const NAV = [["", "Overview"], ["days", "Scrim Days"], ["players", "Players"], ["maps", "Maps"], ["records", "Records"], ["compare", "Compare"], ["pivot", "Pivot"], ["contribute", "Contribute"]];
 function markNav() {
   const h = location.hash.slice(1).split(/[/?]/)[0], cur = h === "p" ? "players" : h;
   document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.dataset.r === cur));
