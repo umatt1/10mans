@@ -13,8 +13,9 @@ function makeEl() {
     querySelector: () => null, querySelectorAll: () => [], closest: () => null, focus() {}, setSelectionRange() {}};
 }
 
-async function load({mode = "static", src = "sheet", local = [], session = null, fetchImpl} = {}) {
-  const els = {}, listeners = {}, posts = [];
+async function load({mode = "static", src = "sheet", local = [], session = null, fetchImpl, version = null} = {}) {
+  let versionNow = version;
+  const els = {}, listeners = {}, posts = [], gets = {stats: 0};
   const $el = sel => (els[sel] ??= makeEl());
   const storage = {src: JSON.stringify(src), local: JSON.stringify(local), sb: JSON.stringify(session)};
   const document = {
@@ -25,7 +26,8 @@ async function load({mode = "static", src = "sheet", local = [], session = null,
   const defaultFetch = async (url, opts = {}) => {
     const ok = body => ({ok: true, status: 200, json: async () => body});
     if (opts.method === "POST") { posts.push({url, body: JSON.parse(opts.body)}); await new Promise(r => setTimeout(r, 30)); return ok({inserted: 1, results: [{ok: true}]}); }
-    if (url.endsWith("data/stats.json")) return ok(stats);
+    if (url.includes("data/version.json")) return versionNow ? ok(versionNow) : {ok: false, status: 404, json: async () => ({})};
+    if (url.endsWith("data/stats.json")) { gets.stats++; return ok(stats); }
     if (url.endsWith("data/matches.json")) return ok(matches);
     if (url.includes("/rest/v1/matches")) return ok(matches.matches.map(m => ({data: m})));
     if (url.includes("/rest/v1/aliases")) return ok(Object.entries(matches.aliases).map(([ingame, player]) => ({ingame, player})));
@@ -33,7 +35,7 @@ async function load({mode = "static", src = "sheet", local = [], session = null,
   };
   const ctx = vm.createContext({
     document, console, setTimeout, clearTimeout, URL, URLSearchParams, Blob, TextDecoder, TextEncoder, atob, btoa, DecompressionStream, Response,
-    window: {addEventListener() {}, TENMANS: mode === "supabase" ? {mode, supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "sb_publishable_test"} : {mode: "static"}},
+    window: {addEventListener() {}, TENMANS: mode === "supabase" ? {mode, supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "sb_publishable_test", pollMs: 2} : {mode: "static"}},
     localStorage: {getItem: k => storage[k] ?? null, setItem: (k, v) => { storage[k] = v; }},
     location: {hash: ""}, history: {replaceState() {}}, navigator: {}, scrollTo() {}, scrollY: 0, addEventListener() {},
     fetch: fetchImpl ? (u, o) => fetchImpl(u, o, defaultFetch) : defaultFetch,
@@ -51,6 +53,6 @@ async function load({mode = "static", src = "sheet", local = [], session = null,
     return el;
   };
   const fire = (type, target) => (listeners[type] || []).forEach(fn => fn({target}));
-  return {ctx, run, runAsync, fire, el: $el, posts, click, matches, stats};
+  return {ctx, run, runAsync, fire, gets, setVersion: v => { versionNow = v; }, el: $el, posts, click, matches, stats};
 }
 module.exports = {load, root, readJson};

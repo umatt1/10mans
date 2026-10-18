@@ -592,7 +592,7 @@ function contributeView() {
       <p class="tip">Or paste JSON: </p><textarea id="paste" placeholder='{"date":"2026-10-17","map":"Dust2","score":[13,10], ...}'></textarea>
       <div class="actions" style="padding-left:0"><button class="btn" data-act="parsePaste">Preview pasted JSON</button></div><div id="pend"></div><div id="spend"></div></div>`)}
     ${loc}
-    ${SB ? cloudBox() : box("3 · Make it permanent (for everyone)", `<div class="box-body"><ol class="steps">
+    ${SB ? cloudBox() + (signedIn() ? refreshBox() : "") : box("3 · Make it permanent (for everyone)", `<div class="box-body"><ol class="steps">
       <li>Open <a href="https://github.com/${REPO}/upload/main/data/matches" target="_blank" rel="noopener">the repo's upload page</a> (needs a free GitHub account). Drag the downloaded file(s) in. If you aren't a collaborator GitHub will offer to fork and open a pull request, which is fine.</li>
       <li>Commit. A GitHub Action validates the files, rebuilds <code>data/matches.json</code> and the site updates in a minute or two. A bad file fails the check with a readable message.</li>
       <li>Player names that aren't in <a href="https://github.com/${REPO}/blob/main/data/aliases.json" target="_blank" rel="noopener"><code>data/aliases.json</code></a> show up under their Refrag in-game name. Add <code>"in-game name": "Sheet name"</code> there to merge them into the right player.</li>
@@ -616,6 +616,19 @@ Optional: HS % · Player · Team · Result</pre>
       ${dlBtn("template", "↓ Download template")}</div>`)}`;
   if (!SNIPPET) fetch(SNIPPET_URL).then(r => r.text()).then(t => { SNIPPET = t; fillSnippet(); }).catch(() => {}); else fillSnippet();
   renderPend(); renderStatsPend();
+  if (SB && signedIn()) fillRefresh();
+}
+function refreshBox() {
+  return box("Refresh Google Sheet data", `<div class="box-body" id="refresh">Checking when the sheet was last read…</div>`);
+}
+async function fillRefresh() {
+  const el = $("#refresh"); if (!el) return;
+  const v = await readVersion(), left = hoursLeft(v);
+  if (!$("#refresh")) return;
+  const ago = v?.syncedAt ? (Date.now() - Date.parse(v.syncedAt)) / 36e5 : null;
+  el.innerHTML = `The site only reads the Google Sheet when it is rebuilt. ${v?.syncedAt ? `Last read <b>${new Date(v.syncedAt).toLocaleString()}</b> (${ago < 1 ? Math.max(1, Math.round(ago * 60)) + " min" : fmtHours(ago)} ago).` : "I couldn't tell when it was last read."}
+    <div class="actions" style="padding-left:0"><button class="btn pri" data-act="refresh"${left > 0 || BUSY ? " disabled" : ""}>${BUSY ? "Rebuilding…" : "Refresh sheet data"}</button>
+    <span class="tip">${left > 0 ? `available again in ${fmtHours(left)} (once every ${REFRESH_HOURS}h)` : `available now (once every ${REFRESH_HOURS}h)`}</span></div>`;
 }
 function cloudBox() {
   const body = signedIn()
@@ -707,7 +720,7 @@ async function takeFiles(files) {
 }
 
 /* ---------- data layer (static JSON or Supabase) ---------- */
-const getJson = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + " " + r.status); return r.json(); });
+const getJson = u => fetch(u, {cache: "no-store"}).then(r => { if (!r.ok) throw new Error(u + " " + r.status); return r.json(); });
 const rest = p => fetch(CFG.supabaseUrl + "/rest/v1/" + p, {headers: {apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + CFG.supabaseAnonKey}})
   .then(r => { if (!r.ok) throw new Error(p + " " + r.status); return r.json(); });
 async function loadData() {
@@ -732,6 +745,11 @@ async function sbCall(body) {
   if (!r.ok) { const e = new Error(j.error || "request failed (" + r.status + ")"); e.results = j.results; throw e; }
   return j;
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const readVersion = () => fetch("data/version.json?t=" + Date.now(), {cache: "no-store"}).then(r => r.ok ? r.json() : null).catch(() => null);
+const REFRESH_HOURS = 24;   // keep in step with COOLDOWN_HOURS in scripts/cooldown.js (Vercel enforces it; this just avoids pointless clicks)
+const hoursLeft = v => v && v.syncedAt ? Math.max(0, REFRESH_HOURS - (Date.now() - Date.parse(v.syncedAt)) / 36e5) : 0;
+const fmtHours = h => h >= 1 ? `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m` : `${Math.max(1, Math.round(h * 60))} min`;
 const reloadData = async () => { [SHEET, REF] = await loadData(); buildDB(); };
 let toastTimer;
 const flash = (msg, bad) => {
@@ -850,6 +868,23 @@ document.addEventListener("click", e => {
     BUSY = true; a.disabled = true;
     sbCall({action: "move", seq: +a.dataset.seq}).then(async () => { await reloadData(); BUSY = false; await historyView(); flash("History moved. The site now shows that state."); },
       err => { BUSY = false; a.disabled = false; flash(err.message, true); });
+  }
+  if (act === "refresh") {
+    if (BUSY) return;
+    BUSY = true;   // lock first: the check below is async, and extra clicks must not slip through while it runs
+    readVersion().then(async v => {
+      if (hoursLeft(v) > 0) { BUSY = false; flash(`The sheet was read recently. The next refresh is allowed in ${fmtHours(hoursLeft(v))}.`, true); return; }
+      fillRefresh();
+      try {
+        await sbCall({action: "refresh"});
+        flash("Rebuild started. Waiting for the new data (about a minute)…");
+        let fresh = null;
+        for (let i = 0; i < 36 && !fresh; i++) { await sleep(CFG.pollMs ?? 5000); const x = await readVersion(); if (x && x.syncedAt !== v?.syncedAt) fresh = x; }
+        if (fresh) { await reloadData(); flash("Sheet data refreshed."); }
+        else flash("No change yet. The rebuild may still be running, or the daily limit applied. Reload in a minute.", true);
+      } catch (e) { flash(e.message, true); }
+      BUSY = false; route(true);
+    });
   }
   if (act === "statsClear") { SSRC = []; SMSG = []; renderStatsPend(); }
   if (act === "statsLocal" && SAN) {

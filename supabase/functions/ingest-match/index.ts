@@ -3,6 +3,8 @@
 //        a match is a Refrag scoreboard / score-only game, or {kind:"stats", date, map, players:[...]} from a CSV/Excel upload
 //   {action:"remove", id}           append a remove entry (nothing is deleted)
 //   {action:"move", seq}            roll back / fast-forward the ledger head (0 = empty start)
+//   {action:"refresh"}              rebuild the site so it re-reads the Google Sheet (calls the VERCEL_DEPLOY_HOOK_URL secret;
+//                                   Vercel itself enforces the once-a-day limit by cancelling extra builds)
 // Every write is a Postgres function (supabase/migrations/001_ledger.sql) that locks the head row, so a
 // double-clicked or concurrent request is applied one at a time and duplicates are refused.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -52,6 +54,17 @@ export async function cleanStats(m: any) {
   return { kind: "stats", id: `stats-${m.date}-${slug}-${hash}`, date: m.date, map: String(m.map).trim(), rounds: m.rounds ?? players[0].rounds, source: "upload", players };
 }
 
+// The deploy-hook URL is a secret, so it lives only in the function's environment and is never sent to the browser.
+export async function triggerRefresh(hook: any, doFetch: any = fetch) {
+  if (!hook) return { status: 501, body: { error: "Refresh isn't set up yet: add the VERCEL_DEPLOY_HOOK_URL secret in Supabase (Edge Functions > Secrets)." } };
+  try {
+    const r = await doFetch(hook, { method: "POST" });
+    return r.ok ? { status: 200, body: { ok: true } } : { status: 502, body: { error: `Vercel refused the rebuild (HTTP ${r.status}).` } };
+  } catch (_e) {
+    return { status: 502, body: { error: "Could not reach Vercel to start the rebuild." } };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "POST only" }, 405);
@@ -66,6 +79,10 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return reply({ error: "Body is not valid JSON" }, 400); }
   const action = Array.isArray(body) ? "add" : body?.action ?? "add";
 
+  if (action === "refresh") {
+    const r = await triggerRefresh(Deno.env.get("VERCEL_DEPLOY_HOOK_URL"));
+    return reply(r.body, r.status);
+  }
   if (action === "remove") {
     const { data, error } = await db.rpc("ledger_remove", { mid: String(body.id ?? ""), by_email: who, note: body.note ?? null });
     if (error) return reply({ error: error.message }, 500);

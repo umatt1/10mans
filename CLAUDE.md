@@ -84,8 +84,12 @@ There is deliberately **no schedule** (owner worried about cost). Every Vercel b
 - never commit it. Vercel dashboard -> project -> Settings -> Git -> Deploy Hooks shows/regenerates it; POST it and a ~20s build runs; verified 2026-10-18), (2) Vercel dashboard
 Deployments -> Redeploy (not tested), (3) any push to main, (4) Actions tab -> Sync stats -> Run workflow (commits stats.json; also reruns on
 pushes touching data/matches/**). The footer "Sheet synced ..." time is when the last build fetched the sheet. Matches in Supabase are live
-immediately and need no refresh. Not built: an in-site refresh button (would need the ingest-match edge function to call the hook, with the hook
-URL as a Supabase secret).
+immediately and need no refresh. **In-site button** (Contribute page, signed-in only, Supabase mode): "Refresh sheet data" posts `{action:"refresh"}` to `ingest-match`, which POSTs the
+Vercel deploy hook read from the **Supabase secret `VERCEL_DEPLOY_HOOK_URL`** (set by the owner in Dashboard > Edge Functions > Secrets; the URL is never
+in the repo or the browser). Until that secret exists the button reports "Refresh isn't set up yet" (HTTP 501). The page reads the public
+`data/version.json` to disable the button inside the 24h window (and show the countdown), then polls it every 5s (up to ~3 min) until `syncedAt` changes
+and reloads the data. Vercel still enforces the real limit via the ignore step, so a bypass just gets a cancelled build. The button locks itself before the
+async version check (a test caught three rapid clicks sending three requests when it locked afterwards).
 
 ### Once-a-day cooldown on the refresh
 `vercel.json` `ignoreCommand` runs `scripts/cooldown.js` (Vercel's Ignored Build Step) before every build. Each build writes `data/version.json`
