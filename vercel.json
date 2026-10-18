@@ -11,6 +11,6 @@
       ]
     }
   ],
-  "buildCommand": "npm test",
+  "buildCommand": "python3 scripts/sync.py || echo 'SHEET SYNC FAILED: deploying the last committed data/stats.json'; npm test",
   "outputDirectory": "."
 }

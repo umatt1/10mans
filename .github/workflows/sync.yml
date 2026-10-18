@@ -1,7 +1,5 @@
 name: Sync stats
 on:
-  schedule:
-    - cron: "0 */6 * * *"
   push:
     branches: [main]
     paths: ["data/matches/**", "data/aliases.json"]
