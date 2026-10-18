@@ -39,7 +39,7 @@ page to produce a file. Aliases (Refrag in-game name -> sheet name) live in `dat
 
 ## Hosting
 Deployed on both GitHub Pages (https://umatt1.github.io/10mans/) and Vercel (https://10mans.vercel.app, project `10mans` under umatt1s-projects, git-connected so pushes auto-deploy). `config.js` + `supabase/` + `vercel.json` + `docs/MIGRATION.md`
-are the ready-but-untested path to Vercel + Supabase with shared-login uploads.
+wire in Supabase (project ref sipcpfxjjsxsdozdommz, region us-east-1): `matches` + `aliases` tables seeded, public read via RLS, uploads only through the `ingest-match` edge function (deployed via dashboard; JWT gateway verification must be OFF). In `supabase` mode the site reads matches/aliases from Supabase and `data/matches/` is no longer what the app reads (the GitHub upload flow is hidden). Sheet stats still come from `data/stats.json`.
 
 ## Site
 `index.html` + `app.js` + `style.css` (HLTV-inspired). Hash routes: `#` overview, `#days[/date[/gN]]`, `#players`, `#p/<name>`,

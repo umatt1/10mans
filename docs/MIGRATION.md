@@ -3,7 +3,8 @@
 The site is plain static files, so Vercel needs no build step. Supabase adds the database, the shared login, and the
 upload endpoint that validates files. Nothing here is active until you flip `mode` in `config.js`; GitHub Pages keeps working.
 
-> **Status:** Vercel is done: https://10mans.vercel.app (project `10mans`, GitHub repo connected, redeploys on every push). Supabase is the remaining part.
+> **Status:** Vercel is done: https://10mans.vercel.app (project `10mans`, GitHub repo connected, redeploys on every push). Supabase project `10mans` (ref `sipcpfxjjsxsdozdommz`) is created, seeded (8 matches, 10 aliases), RLS on, `ingest-match` deployed, and `config.js` is in `supabase` mode.
+> **Manual steps left (security settings, done in the dashboard):** (1) Edge Functions → ingest-match → turn **off** "Verify JWT with legacy secret" (the function checks the login itself; leaving it on makes browser uploads fail with 401/CORS), (2) Authentication → Users → add the shared user (auto-confirm), (3) Authentication → Sign In / Providers → turn **off** "Allow new users to sign up".
 
 ## 1. Supabase
 1. Create a project. In **SQL editor**, run `supabase/schema.sql` (tables `matches` and `aliases`, public read, no direct writes).
