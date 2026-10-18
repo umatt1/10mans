@@ -32,13 +32,13 @@ async function load({mode = "static", src = "sheet", local = [], session = null,
     return {ok: false, status: 404, json: async () => ({})};
   };
   const ctx = vm.createContext({
-    document, console, setTimeout, clearTimeout, URL, URLSearchParams, Blob, TextDecoder, atob, btoa,
+    document, console, setTimeout, clearTimeout, URL, URLSearchParams, Blob, TextDecoder, TextEncoder, atob, btoa, DecompressionStream, Response,
     window: {addEventListener() {}, TENMANS: mode === "supabase" ? {mode, supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "sb_publishable_test"} : {mode: "static"}},
     localStorage: {getItem: k => storage[k] ?? null, setItem: (k, v) => { storage[k] = v; }},
     location: {hash: ""}, history: {replaceState() {}}, navigator: {}, scrollTo() {}, scrollY: 0, addEventListener() {},
     fetch: fetchImpl ? (u, o) => fetchImpl(u, o, defaultFetch) : defaultFetch,
   });
-  vm.runInContext(fs.readFileSync(path.join(root, "app.js"), "utf8"), ctx, {filename: "app.js"});
+  for (const f of ["import.js", "app.js"]) vm.runInContext(fs.readFileSync(path.join(root, f), "utf8"), ctx, {filename: f});
   for (let i = 0; i < 100 && !vm.runInContext("typeof DB !== 'undefined' && !!DB", ctx); i++) await new Promise(r => setImmediate(r));
   // Objects built inside the vm have a different prototype, so return plain JSON copies for deepEqual.
   const run = code => { const v = vm.runInContext(code, ctx); return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v; };
@@ -50,6 +50,7 @@ async function load({mode = "static", src = "sheet", local = [], session = null,
     listeners.click.forEach(fn => fn({target}));
     return el;
   };
-  return {ctx, run, runAsync, el: $el, posts, click, matches, stats};
+  const fire = (type, target) => (listeners[type] || []).forEach(fn => fn({target}));
+  return {ctx, run, runAsync, fire, el: $el, posts, click, matches, stats};
 }
 module.exports = {load, root, readJson};

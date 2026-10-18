@@ -44,6 +44,7 @@ const FILT = {day: "", map: "", min: 1};
 const SORT = {};
 let PEND = [];
 let BUSY = false;
+let SSRC = [], SMSG = [], SAN = null;   // stats files waiting to be published (sources, read warnings, last analysis)
 
 const RL = () => SRC === "refrag" ? "Rating" : "Rating*";
 const alias = n => REF.aliases[n] || n;
@@ -82,7 +83,9 @@ function sbRows(m) {
 }
 
 function buildDB() {
-  const refs = [...REF.matches, ...LOCAL.filter(l => !REF.matches.some(m => m.id === l.id))].map(m => ({...m, map: normMap(m.map)}));
+  const all = [...REF.matches, ...LOCAL.filter(l => !REF.matches.some(m => m.id === l.id))].map(m => ({...m, map: normMap(m.map)}));
+  const refs = all.filter(m => m.kind !== "stats");
+  const uploads = all.filter(m => m.kind === "stats").sort((x, y) => x.id.localeCompare(y.id));   // CSV/Excel stats uploads
   let games = [];
   if (SRC === "sheet") {
     const g = {};
@@ -98,6 +101,18 @@ function buildDB() {
       const t = Object.values(g).find(y => y !== x && y.map === x.map && y.rows.length > 2 &&
         Math.abs(day(y.date) - day(x.date)) <= 1 && !y.rows.some(r => x.rows.some(q => q.name === r.name)));
       if (t) { t.rows.push(...x.rows); delete g[k]; }
+    }
+    // Uploaded stats only fill in rows the sheet does not already have, so re-uploading a file never double counts.
+    const have = new Set(Object.values(g).flatMap(x => x.rows.map(r => `${r.name}|${r.date}|${r.map}`)));
+    for (const u of uploads) for (const p of u.players) {
+      const key = `${p.name}|${u.date}|${u.map}`;
+      if (have.has(key)) continue;
+      have.add(key);
+      const grp = g[u.date + "|" + u.map] ??= {date: u.date, map: u.map, rows: []};
+      const rounds = p.rounds ?? u.rounds;
+      grp.rows.push({name: p.name, date: u.date, map: u.map, k: p.k, d: p.d, a: p.a, hs: p.hs ?? 0, rounds, dmg: p.dmg, adr: p.dmg / rounds,
+        tl: p.team ?? null, said: p.win ?? null, upload: u.id});
+      (grp.upload ??= new Set()).add(u.id);
     }
     games = Object.values(g);
     const used = new Set();
@@ -131,6 +146,26 @@ function buildDB() {
       g.rows.forEach(r => { r.team = A.has(r.name) ? "A" : B.has(r.name) ? "B" : null; r.win = r.team ? r.team === g.winner : (r.side ? r.side === "win" : null); });
     }
     series[date] = {A: [...A], B: [...B], wins, games: full.length};
+  }
+  // Days with no scoreboard: teams from the optional Team / Result columns of an upload (the day's first two labels become A and B).
+  for (const [date, gs] of Object.entries(byDate)) {
+    if (series[date]) continue;
+    const lab = gs.filter(g => g.rows.some(r => r.tl));
+    if (!lab.length) continue;
+    const side = {};
+    for (const g of lab) for (const r of g.rows) if (r.tl && !(r.tl in side) && Object.keys(side).length < 2) side[r.tl] = Object.keys(side).length ? "B" : "A";
+    const roster = {A: new Set(), B: new Set()}, wins = {A: 0, B: 0};
+    for (const g of lab) {
+      const w = {A: 0, B: 0};
+      g.rows.forEach(r => {
+        r.team = side[r.tl] ?? null;
+        if (r.team) { roster[r.team].add(r.name); if (r.said === true) w[r.team]++; }
+        r.win = r.team && r.said != null ? r.said : null;
+      });
+      g.winner = w.A > w.B ? "A" : w.B > w.A ? "B" : null;
+      if (g.winner) wins[g.winner]++;
+    }
+    series[date] = {A: [...roster.A], B: [...roster.B], wins, games: lab.length};
   }
   const rows = games.flatMap(g => g.rows);
   const players = {};
@@ -296,7 +331,10 @@ function scoreboard(m, g) {
 
 function gameHtml(g, open = false) {
   const m = g.ref;
-  const badge = m?.win ? `<span class="badge ref">Refrag</span>` : m ? `<span class="badge">score only</span>` : `<span class="badge">sheet</span>`;
+  const up = g.upload ? [...g.upload] : [], allUp = g.rows.length > 0 && g.rows.every(r => r.upload);
+  const badge = m?.win ? `<span class="badge ref">Refrag</span>` : m ? `<span class="badge">score only</span>` : `<span class="badge${up.length ? " loc" : ""}">${allUp ? "uploaded" : up.length ? "sheet + upload" : "sheet"}</span>`;
+  const isLocal = id => LOCAL.some(l => l.id === id) && !REF.matches.some(x => x.id === id);
+  const upRemote = up.filter(id => !isLocal(id)), upLocal = up.filter(isLocal);
   const loc = m?.local ? `<span class="badge loc">local</span>` : "";
   let body;
   if (m?.win) body = scoreboard(m, g);
@@ -309,7 +347,7 @@ function gameHtml(g, open = false) {
       {k: "r", h: "Rating*", v: rowRating, f: r => rt(rowRating(r))}];
     body = table("g" + g.i, cols, g.rows, {k: "r", rowClass: r => r.team ? "t" + r.team : ""});
   } else body = `<div class="box-body muted">Score only: Refrag has no scoreboard for this demo ("Stats not available").</div>`;
-  const acts = `<div class="actions">${g.rows.length ? dlBtn(`g:${g.i}:csv`) : ""}${m?.win ? dlBtn(`g:${g.i}:json`, "↓ JSON (re-importable)") : ""}${SB && signedIn() && m && !m.local ? `<button class="btn danger" data-act="rmremote" data-id="${esc(m.id)}">Remove from site</button>` : ""}${m?.local ? `<button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove local</button>` : ""}</div>`;
+  const acts = `<div class="actions">${g.rows.length ? dlBtn(`g:${g.i}:csv`) : ""}${m?.win ? dlBtn(`g:${g.i}:json`, "↓ JSON (re-importable)") : ""}${SB && signedIn() && upRemote.length ? `<button class="btn danger" data-act="rmupload" data-ids="${esc(upRemote.join(","))}">Remove uploaded stats</button>` : ""}${upLocal.length ? `<button class="btn danger" data-act="rmlocal" data-ids="${esc(upLocal.join(","))}">Remove local upload</button>` : ""}${SB && signedIn() && m && !m.local ? `<button class="btn danger" data-act="rmremote" data-id="${esc(m.id)}">Remove from site</button>` : ""}${m?.local ? `<button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove local</button>` : ""}</div>`;
   return `<details class="game" id="g${g.i}"${open ? " open" : ""}><summary><b>${esc(g.map)}</b>${badge}${loc}<span class="muted">${m?.time ? esc(m.time) : ""}</span><span class="sc">${g.score ? g.score.join(" – ") : ""}</span></summary><div class="gbody">${body}${acts}</div></details>`;
 }
 
@@ -318,7 +356,7 @@ function daysView(focus) {
     const gs = DB.byDate[d], ser = DB.series[d], rows = DB.rows.filter(r => r.date === d);
     const L = leaderRows(rows).sort((a, b) => b.rating - a.rating);
     const header = ser ? `<div class="series"><div class="team"><b class="tcA">${esc(teamName(d, "A"))}</b><small>${ser.A.map(esc).join(", ")}</small></div>
-        <div class="big"><span class="${ser.wins.A >= ser.wins.B ? "w" : "x"}">${ser.wins.A}</span> : <span class="${ser.wins.B > ser.wins.A ? "w" : "x"}">${ser.wins.B}</span><div class="muted" style="font-size:11px;font-weight:400">best of 3 · ${ser.games} played</div></div>
+        <div class="big">${ser.wins.A + ser.wins.B ? `<span class="${ser.wins.A >= ser.wins.B ? "w" : "x"}">${ser.wins.A}</span> : <span class="${ser.wins.B > ser.wins.A ? "w" : "x"}">${ser.wins.B}</span>` : "vs"}<div class="muted" style="font-size:11px;font-weight:400">best of 3 · ${ser.games} played</div></div>
         <div class="team"><b class="tcB">${esc(teamName(d, "B"))}</b><small>${ser.B.map(esc).join(", ")}</small></div></div>` : "";
     const maps = `<div class="maps">${gs.map(g => `<a class="mapcard" href="#days/${d}/g${g.i}"><b>${esc(g.map)}</b><span class="sc">${g.score ? g.score.join(" – ") : "–"}</span></a>`).join("")}</div>`;
     const mvp = L[0];
@@ -541,7 +579,7 @@ const SNIPPET_URL = "tools/export-refrag-match.js";
 const REPO = "umatt1/10mans";
 let SNIPPET = "";
 function contributeView() {
-  const loc = LOCAL.length ? box("Matches added in this browser", `<div class="scroll"><table><tbody>${LOCAL.map(m => `<tr><td>${fdate(m.date)} · ${esc(m.map)}</td><td>${m.score.join(" – ")}</td><td>${m.win ? "scoreboard" : "score only"}</td><td><button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove</button></td></tr>`).join("")}</tbody></table></div>`,
+  const loc = LOCAL.length ? box("Matches added in this browser", `<div class="scroll"><table><tbody>${LOCAL.map(m => `<tr><td>${fdate(m.date)} · ${esc(m.map)}</td><td>${m.kind === "stats" ? m.players.length + " players" : m.score.join(" – ")}</td><td>${m.kind === "stats" ? "stats upload" : m.win ? "scoreboard" : "score only"}</td><td><button class="btn danger" data-act="rmlocal" data-id="${esc(m.id)}">Remove</button></td></tr>`).join("")}</tbody></table></div>`,
     `<button class="btn" data-act="dlLocal">↓ Download all as one file</button>`) : "";
   $("#app").innerHTML = `<h1>Contribute a match</h1>
     <div class="notice">Played a 10 man that isn't on the site? If you can open it on <b>play.refrag.gg</b> (your own Refrag account, even a free one, if you were in the match), you can add it in about a minute.</div>
@@ -550,15 +588,24 @@ function contributeView() {
       <li>Easiest: drag this button to your bookmarks bar, then click it on the match page: <a class="btn pri" id="bm" href="#">⭳ Export Refrag match</a></li>
       <li>No bookmarks bar? Open DevTools (F12) → Console, paste the script below, press Enter:<pre id="snip">loading…</pre><button class="btn" data-act="copySnip">Copy script</button></li>
       <li>A file like <code>2026-10-17-dust2-13-10.json</code> downloads. Matches with "Stats not available" have no scoreboard, so use the score-only template below.</li></ol></div>`)}
-    ${box("2 · Drop it here to preview", `<div class="box-body"><div class="drop" id="drop">Drag &amp; drop match <code>.json</code> files here, or click to choose<input type="file" id="file" accept=".json,application/json" multiple hidden></div>
+    ${box("2 · Drop it here to preview", `<div class="box-body"><div class="drop" id="drop">Drag &amp; drop match <code>.json</code> files <b>or stats <code>.csv</code> / <code>.xlsx</code> files</b> here, or click to choose<input type="file" id="file" accept=".json,.csv,.tsv,.xlsx,.xls,application/json,text/csv" multiple hidden></div>
       <p class="tip">Or paste JSON: </p><textarea id="paste" placeholder='{"date":"2026-10-17","map":"Dust2","score":[13,10], ...}'></textarea>
-      <div class="actions" style="padding-left:0"><button class="btn" data-act="parsePaste">Preview pasted JSON</button></div><div id="pend"></div></div>`)}
+      <div class="actions" style="padding-left:0"><button class="btn" data-act="parsePaste">Preview pasted JSON</button></div><div id="pend"></div><div id="spend"></div></div>`)}
     ${loc}
     ${SB ? cloudBox() : box("3 · Make it permanent (for everyone)", `<div class="box-body"><ol class="steps">
       <li>Open <a href="https://github.com/${REPO}/upload/main/data/matches" target="_blank" rel="noopener">the repo's upload page</a> (needs a free GitHub account). Drag the downloaded file(s) in. If you aren't a collaborator GitHub will offer to fork and open a pull request, which is fine.</li>
       <li>Commit. A GitHub Action validates the files, rebuilds <code>data/matches.json</code> and the site updates in a minute or two. A bad file fails the check with a readable message.</li>
       <li>Player names that aren't in <a href="https://github.com/${REPO}/blob/main/data/aliases.json" target="_blank" rel="noopener"><code>data/aliases.json</code></a> show up under their Refrag in-game name. Add <code>"in-game name": "Sheet name"</code> there to merge them into the right player.</li>
-      <li>Stats for the Google Sheet are still entered in the sheet as usual. They sync every 6 hours.</li></ol></div>`)}
+      <li>Stats for the Google Sheet are still entered in the sheet as usual. The site re-reads it whenever it is rebuilt (the once-a-day refresh).</li></ol></div>`)}
+    ${box("Stats file format (CSV / Excel)", `<div class="box-body"><p>Upload a <b>.xlsx workbook like our Google Sheet</b> (one tab per player, the tab name is the player) or a <b>.csv / one tab for everyone</b> with a <code>Player</code> column. A CSV without a Player column uses the file name (<code>Matt.csv</code> → Matt, editable in the preview). Columns can be in any order and are matched case-insensitively:</p>
+      <pre>Required: Map, Date, Kills, Death(s), Assist(s), Rounds, and DMG (or ADR)
+Optional: HS % · Player · Team · Result</pre>
+      <ul><li><b>Date</b>: <code>3/28/26</code>, <code>3/28/2026</code>, <code>2026-03-28</code>, <code>Oct 17, 2026</code> or an Excel date.</li>
+      <li><b>New players</b> are created automatically from a new tab/Player name. Names are matched to existing players ignoring capitalisation.</li>
+      <li><b>Nothing is double counted.</b> A row (player + date + map) the site already has is skipped; if its numbers differ it is listed as a conflict and skipped, never overwritten.</li>
+      <li><b>Team</b> and <b>Result</b> (<code>W</code>/<code>L</code>) are optional. If you fill them in for a day, that day gets team colours and a series score like a Refrag day.</li>
+      <li>Excel stores <code>33%</code> as <code>0.33</code>; the importer treats HS values of 1 or less in Excel cells as fractions, so check the preview.</li></ul>
+      ${dlBtn("stats-template", "↓ Download CSV template")}</div>`)}
     ${box("Match file format", `<div class="box-body"><p>Full scoreboard (what the export script produces, first five players are the winners):</p><pre>{
  "id": "refrag-match-uuid",      // optional, generated if missing
  "date": "2026-10-17", "time": "8:36 PM",  // time optional, orders maps within a day
@@ -568,7 +615,7 @@ function contributeView() {
 }</pre><p>Score-only (when Refrag has no scoreboard): just <code>{"date":"2026-04-10","map":"Mirage","score":[13,3]}</code>. A file can also be an array of matches.</p>
       ${dlBtn("template", "↓ Download template")}</div>`)}`;
   if (!SNIPPET) fetch(SNIPPET_URL).then(r => r.text()).then(t => { SNIPPET = t; fillSnippet(); }).catch(() => {}); else fillSnippet();
-  renderPend();
+  renderPend(); renderStatsPend();
 }
 function cloudBox() {
   const body = signedIn()
@@ -593,7 +640,7 @@ function validateMatch(m) {
   for (const side of ["win", "lose"]) for (const x of m?.[side] || [])
     if (!x.name || !["k", "d", "a"].every(k => Number.isFinite(x[k]))) p.push(`${side}: ${x.name || "a player"} needs name, k, d, a`);
   if (!p.length) m.id ||= `${m.date}-${String(m.map).toLowerCase()}-${m.score.join("-")}`;
-  const dup = p.length ? null : [...REF.matches, ...LOCAL].find(x => x.id === m.id || (x.date === m.date && x.map.toLowerCase() === String(m.map).toLowerCase() && x.score.join() === m.score.join()));
+  const dup = p.length ? null : [...REF.matches, ...LOCAL].find(x => x.id === m.id || (x.score && x.date === m.date && x.map.toLowerCase() === String(m.map).toLowerCase() && x.score.join() === m.score.join()));
   if (dup) p.push("already on the site");
   return p;
 }
@@ -613,9 +660,50 @@ function renderPend() {
   <div class="actions" style="padding-left:0">${good.length ? `${SB && signedIn() ? `<button class="btn pri" data-act="publish"${BUSY ? " disabled" : ""}>${BUSY ? "Publishing…" : `Publish ${good.length} for everyone`}</button>` : ""}<button class="btn${SB && signedIn() ? "" : " pri"}" data-act="addLocal">Add ${good.length} to this browser</button><button class="btn" data-act="dlPend">↓ Download ${good.length} for upload</button>` : ""}<button class="btn" data-act="clearPend">Clear</button></div>
   <p class="tip">"Add to this browser" is a private preview stored locally. Use the upload step below to publish for everyone.</p>`;
 }
+
+/* ---------- stats upload (CSV / Excel), see import.js ---------- */
+function existingStats() {
+  const m = new Map();
+  const put = (name, date, map, r) => { const k = `${name}|${date}|${normMap(map)}`; if (!m.has(k)) m.set(k, r); };
+  for (const [name, rows] of Object.entries(SHEET.players)) rows.forEach(r => put(name, r.date, r.map, r));
+  for (const u of [...REF.matches, ...LOCAL]) if (u.kind === "stats") u.players.forEach(p => put(p.name, u.date, u.map, {...p, rounds: p.rounds ?? u.rounds}));
+  return m;
+}
+const knownNames = () => [...new Set([...Object.keys(SHEET.players), ...Object.values(REF.aliases),
+  ...[...REF.matches, ...LOCAL].filter(u => u.kind === "stats").flatMap(u => u.players.map(p => p.name))])];
+
+function renderStatsPend() {
+  const el = $("#spend"); if (!el) return;
+  if (!SSRC.length && !SMSG.length) { el.innerHTML = ""; SAN = null; return; }
+  const A = SAN = analyzeStats(SSRC, existingStats(), knownNames(), normMap), c = A.counts;
+  const fresh = A.games.filter(g => g.entry.players.length);
+  const can = SB && signedIn();
+  const src = SSRC.map((s, i) => `<tr><td class="l">${esc(s.file)}${s.tab ? ` → <b>${esc(s.tab)}</b>` : ""}</td><td class="l">${s.needsPlayer
+    ? `<input type="text" data-act="sPlayer" data-i="${i}" value="${esc(s.player)}" size="14" title="Player for every row in this file/tab"> <small class="muted">player</small>`
+    : "<span class='muted'>from the Player column</span>"}</td></tr>`).join("");
+  const gameRows = A.games.map(g => `<tr><td class="l">${fdate(g.entry.date)}</td><td class="l">${esc(g.entry.map)}</td><td>${g.entry.rounds}${g.mixedRounds ? ' <small class="neg">rounds differ</small>' : ""}</td><td>${g.entry.players.length}</td><td class="l muted">${esc(g.entry.players.map(p => p.name).join(", "))}</td></tr>`).join("");
+  el.innerHTML = `<h2>Stats file preview</h2>
+    <div class="notice ${c.fresh ? "" : "err"}"><b>${c.read}</b> rows read → <b class="pos">${c.fresh} new</b> · ${c.same} already on the site · <b class="${c.conflict ? "neg" : ""}">${c.conflict} differ from the site (skipped)</b> · <b class="${c.invalid ? "neg" : ""}">${c.invalid} unreadable</b>
+      ${A.newPlayers.length ? `<br>New player${A.newPlayers.length === 1 ? "" : "s"} (created automatically): <b>${A.newPlayers.map(esc).join(", ")}</b>` : ""}</div>
+    ${SMSG.length ? `<ul class="tip">${SMSG.map(m => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
+    ${A.notes.length ? `<ul class="tip">${A.notes.map(m => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
+    ${A.invalid.length ? `<details><summary class="neg">${A.invalid.length} unreadable row${A.invalid.length === 1 ? "" : "s"} (skipped)</summary><ul class="tip">${A.invalid.slice(0, 15).map(m => `<li>${esc(m)}</li>`).join("")}${A.invalid.length > 15 ? `<li>…and ${A.invalid.length - 15} more</li>` : ""}</ul></details>` : ""}
+    ${A.conflicts.length ? `<details><summary class="neg">${A.conflicts.length} row${A.conflicts.length === 1 ? "" : "s"} differ from what the site already has (skipped, fix the source if the file is right)</summary><div class="scroll"><table><thead><tr><th class="l">Player</th><th class="l">Game</th><th>Site has K/D/A · DMG</th><th>File has</th></tr></thead><tbody>${A.conflicts.slice(0, 15).map(x => `<tr><td class="l">${esc(x.name)}</td><td class="l">${fdate(x.date)} · ${esc(x.map)}</td><td>${x.have.k}/${x.have.d}/${x.have.a} · ${x.have.dmg}</td><td>${x.got.k}/${x.got.d}/${x.got.a} · ${x.got.dmg}${x.inFile ? " <small>(also earlier in this upload)</small>" : ""}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
+    <div class="scroll"><table><thead><tr><th class="l">File / tab</th><th class="l">Player</th></tr></thead><tbody>${src}</tbody></table></div>
+    ${fresh.length ? `<div class="scroll"><table><thead><tr><th class="l">Date</th><th class="l">Map</th><th>Rounds</th><th>New rows</th><th class="l">Players</th></tr></thead><tbody>${gameRows}</tbody></table></div>` : `<p class="muted">Nothing new to add from these files.</p>`}
+    <div class="actions" style="padding-left:0">${fresh.length ? `${can ? `<button class="btn pri" data-act="statsPublish"${BUSY ? " disabled" : ""}>${BUSY ? "Publishing…" : `Publish ${c.fresh} new rows (${fresh.length} game${fresh.length === 1 ? "" : "s"})`}</button>` : ""}<button class="btn${can ? "" : " pri"}" data-act="statsLocal">Add to this browser only</button>` : ""}<button class="btn" data-act="statsClear">Clear</button></div>
+    <p class="tip">${SB ? (can ? "Publish adds the new rows for everyone; History can undo it." : "Sign in (step 3 below) to publish for everyone.") : "Publishing for everyone needs the Supabase version of the site."} Rows the site already has are never added twice, so re-uploading a whole updated sheet is safe.</p>`;
+}
+
 async function takeFiles(files) {
-  for (const file of files) takeText(await file.text(), file.name);
-  renderPend();
+  for (const file of files) {
+    if (/\.(csv|tsv|txt|xlsx|xls)$/i.test(file.name)) {
+      SSRC = SSRC.filter(s => s.file !== file.name);
+      try { const r = await readStatsFile(file.name, new Uint8Array(await file.arrayBuffer())); SSRC.push(...r.sources); SMSG.push(...r.skipped); }
+      catch (e) { SMSG.push(e.message.startsWith(file.name) ? e.message : `${file.name}: ${e.message}`); }
+    } else takeText(await file.text(), file.name);
+  }
+  renderPend(); renderStatsPend();
 }
 
 /* ---------- data layer (static JSON or Supabase) ---------- */
@@ -679,7 +767,7 @@ async function historyView() {
   const rows = ev.map(e => {
     const s = state(e), what = e.action === "add" ? "Added" : "Removed";
     const act = s === "applied" ? btn(e.seq, "Roll back to here") : s === "undone" ? btn(e.seq, "Fast-forward to here") : "";
-    return `<tr class="${s}"><td>${e.seq}</td><td class="l">${when(e.at)}</td><td class="l"><span class="badge${e.action === "add" ? " ref" : ""}">${what}</span> ${fdate(e.data.date)} · ${esc(e.data.map)} ${(e.data.score || []).join("–")}${e.note ? ` <small>${esc(e.note)}</small>` : ""}</td><td class="l muted">${esc(e.by_email || "")}</td><td class="l">${s === "current" ? "<b>◀ current</b>" : s === "undone" ? "rolled back" : s === "discarded" ? "discarded" : ""}</td><td>${act}</td></tr>`;
+    return `<tr class="${s}"><td>${e.seq}</td><td class="l">${when(e.at)}</td><td class="l"><span class="badge${e.action === "add" ? " ref" : ""}">${what}</span> ${fdate(e.data.date)} · ${esc(e.data.map)} ${e.data.kind === "stats" ? `stats upload · ${(e.data.players || []).length} players` : (e.data.score || []).join("–")}${e.note ? ` <small>${esc(e.note)}</small>` : ""}</td><td class="l muted">${esc(e.by_email || "")}</td><td class="l">${s === "current" ? "<b>◀ current</b>" : s === "undone" ? "rolled back" : s === "discarded" ? "discarded" : ""}</td><td>${act}</td></tr>`;
   }).join("");
   const start = h > 0 ? btn(0, "Roll back to the very start (empty)") : "";
   $("#app").innerHTML = `<h1>History</h1>
@@ -694,6 +782,8 @@ function handleDownload(what) {
   const [kind, id, fmt] = what.split(":");
   if (what === "all") return download(`10mans-${SRC}-all.csv`, toCsv(ROW_HEAD, DB.rows.map(rowCsv)), "text/csv");
   if (what === "pivot") return download("10mans-pivot.csv", pivotCsv(), "text/csv");
+  if (what === "stats-template") return download("stats-template.csv", toCsv(["Player", "Map", "Date", "Kills", "Death", "Assist", "HS %", "DMG", "Rounds", "Team", "Result"],
+    [["Matt", "Nuke", "2026-11-07", 20, 12, 4, "45%", 2150, 22, "Team 1", "W"], ["Will", "Nuke", "2026-11-07", 24, 10, 6, "52%", 2500, 22, "Team 1", "W"]]), "text/csv");
   if (what === "template") return download("match-template.json", JSON.stringify({date: "2026-10-17", time: "8:36 PM", map: "Dust2", score: [13, 10], source: "refrag",
     win: [{name: "Player", roles: ["Entry"], rating: 1.2, k: 20, d: 15, a: 5, hs: 50, kpr: 0.9, adr: 85, kast: 0.75}], lose: []}, null, 1), "application/json");
   if (kind === "g") {
@@ -761,12 +851,38 @@ document.addEventListener("click", e => {
     sbCall({action: "move", seq: +a.dataset.seq}).then(async () => { await reloadData(); BUSY = false; await historyView(); flash("History moved. The site now shows that state."); },
       err => { BUSY = false; a.disabled = false; flash(err.message, true); });
   }
+  if (act === "statsClear") { SSRC = []; SMSG = []; renderStatsPend(); }
+  if (act === "statsLocal" && SAN) {
+    const entries = SAN.games.filter(g => g.entry.players.length).map(g => g.entry);
+    entries.forEach(e => { if (!LOCAL.some(l => l.id === e.id)) LOCAL.push(e); });
+    store.set("local", LOCAL); SSRC = []; SMSG = []; buildDB(); contributeView();
+    flash(`Added ${entries.length} game${entries.length === 1 ? "" : "s"} to this browser (not published).`);
+  }
+  if (act === "statsPublish" && SAN) {
+    const entries = SAN.games.filter(g => g.entry.players.length).map(g => g.entry);
+    if (BUSY || !entries.length) return;
+    BUSY = true; renderStatsPend();
+    sbCall({action: "add", matches: entries}).then(async res => {
+      const bad = (res.results || []).filter(r => !r.ok).flatMap(r => r.problems || []);
+      SSRC = []; SMSG = [];
+      await reloadData(); BUSY = false; contributeView();
+      flash(`Published ${res.inserted} game${res.inserted === 1 ? "" : "s"}${bad.length ? `; ${bad.length} rejected: ${[...new Set(bad)].join("; ")}` : ""}.`, !!bad.length);
+    }).catch(err => { BUSY = false; renderStatsPend(); flash(err.message, true); });
+  }
+  if (act === "rmupload") {
+    if (BUSY || !armed(a)) return;
+    BUSY = true; a.disabled = true;
+    a.dataset.ids.split(",").reduce((p, id) => p.then(() => sbCall({action: "remove", id})), Promise.resolve())
+      .then(async () => { await reloadData(); BUSY = false; route(true); flash("Removed the uploaded stats. Undo it from the History page."); },
+        err => { BUSY = false; a.disabled = false; flash(err.message, true); });
+  }
   if (act === "dlLocal") download("matches-local.json", JSON.stringify(LOCAL, null, 1), "application/json");
-  if (act === "rmlocal") { LOCAL = LOCAL.filter(m => m.id !== a.dataset.id); store.set("local", LOCAL); buildDB(); route(true); }
+  if (act === "rmlocal") { const ids = (a.dataset.ids || a.dataset.id).split(","); LOCAL = LOCAL.filter(m => !ids.includes(m.id)); store.set("local", LOCAL); buildDB(); route(true); }
 });
 document.addEventListener("change", e => {
   const t = e.target, act = t.dataset.act;
   if (t.id === "file") return takeFiles(t.files);
+  if (act === "sPlayer") { SSRC[+t.dataset.i].player = t.value.trim(); return renderStatsPend(); }
   if (act === "filt") { FILT[t.dataset.f] = t.dataset.f === "min" ? +t.value : t.value; route(true); }
   if (act === "cmp") location.hash = `compare/${encodeURIComponent($("#ca").value)}/${encodeURIComponent($("#cb").value)}`;
   if (act === "pv") {
@@ -808,7 +924,7 @@ loadData()
   .then(([s, r]) => {
     SHEET = s; REF = r;
     $("#nav").innerHTML = (SB ? [...NAV, ["history", "History"]] : NAV).map(([h, l]) => `<a href="#${h}" data-r="${h}">${l}</a>`).join("");
-    $("#foot").innerHTML = `Sheet synced ${new Date(s.updated).toLocaleString()} · ${r.matches.length} Refrag matches (${r.matches.filter(m => m.win).length} with scoreboards) · <a href="https://github.com/${REPO}">source</a><br>Rating* is an estimate (HLTV-2.0-style from kills, deaths, assists and ADR); Refrag Rating is Refrag's own number. Not affiliated with HLTV or Refrag.`;
+    $("#foot").innerHTML = `Sheet synced ${new Date(s.updated).toLocaleString()} · ${r.matches.filter(m => m.kind !== "stats").length} Refrag matches (${r.matches.filter(m => m.win).length} with scoreboards) · <a href="https://github.com/${REPO}">source</a><br>Rating* is an estimate (HLTV-2.0-style from kills, deaths, assists and ADR); Refrag Rating is Refrag's own number. Not affiliated with HLTV or Refrag.`;
     buildDB(); addEventListener("hashchange", () => route()); route();
   })
   .catch(e => $("#app").innerHTML = `<div class="notice err">Couldn't load data: ${esc(e.message)}</div>`);

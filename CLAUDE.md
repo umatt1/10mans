@@ -3,10 +3,26 @@
 Static site (no build step) for an in-house CS2 10-man league. Hosted on Vercel; data lives in Supabase (ledger) plus `data/*.json` (sheet stats, and the static-mode fallback).
 
 ## Data sources
-- **Google Sheet** (public, link-shared): `1RknwngIMQYAuY7AwgZC3bijaTwWZDDh5yw4A6kZpnPM`. One tab per player, columns
-  Map, Date, Kills, Death, Assist, KDA, HS %, DMG, Rounds, ADR. `scripts/sync.py` pulls every tab via the gviz CSV
-  endpoint into `data/stats.json`; `.github/workflows/sync.yml` can run it on demand (no schedule) and commits changes; Vercel builds also run it.
-  The player list is hard-coded in `sync.py` (add new tabs there). Tabs Juicy, Megan, Nathan are currently empty.
+- **Google Sheet** (public, link-shared): id in `data/sheet.json`. One tab per player, columns
+  Map, Date, Kills, Death, Assist, KDA, HS %, DMG, Rounds, ADR. `scripts/sync.py` has **no player list**: it exports the workbook as xlsx
+  only to read the tab names, treats any tab whose header has the stat columns as a player (so a new tab = a new player; `Leaderboards`,
+  `Pro Stats`, `Patch Notes` are skipped), pulls each via the gviz CSV endpoint into `data/stats.json`, keeps a tab's previous rows if its
+  download fails, reuses the previous player list if the tab list fails, and refuses to overwrite with nothing. Runs in every Vercel build
+  (see "Refreshing sheet data"). Header names are matched flexibly (`scripts/sync.py` ALIASES) and dates may be m/d/yy, m/d/yyyy or ISO.
+  Juicy, Megan, Nathan have header-only tabs (no rows yet).
+- **CSV / Excel uploads** (Contribute page, `import.js`): drop `.csv`/`.xlsx` next to match JSON. A workbook shaped like the sheet (tab = player)
+  or any CSV with a `Player` column (else the file name is the player, editable). Required Map, Date, Kills, Death(s), Assist(s), Rounds,
+  DMG-or-ADR; optional HS %, Player, Team, Result (W/L). `.xlsx` is read with a dependency-free zip+XML reader on `DecompressionStream`
+  (`.xls` is rejected with a message). Rows are keyed `player|date|map`: rows the site already has are skipped, rows with different numbers
+  are listed as conflicts and skipped (never overwritten), name case is matched to existing players, new names create new players.
+  Publishing writes one ledger entry per game: `{kind:"stats", id, date, map, rounds, source:"upload", players:[{name,k,d,a,hs,dmg,rounds,team?,win?}]}`
+  (no `score`; id = content hash so the same upload twice is refused). `buildDB` merges these into the **Sheet source only** (Refrag source
+  = official scoreboards only) after the sheet rows, first-wins on `player|date|map`, so re-uploading can never double count. Optional
+  Team/Result give a sheet-only day teams (the day's first two team labels = A/B) and a series score; a scoreboard day always wins over labels.
+  Uploaded games are badged "uploaded"/"sheet + upload" and signed-in users get "Remove uploaded stats" (ledger remove, undo in History).
+  Publishing needs the Supabase version; in static mode uploads can only be "Add to this browser" (localStorage). Heuristic: Excel numeric HS
+  values <= 1 are treated as fractions (33% stored as 0.33). Verified 2026-10-18 with the real exported sheet (700 KB, 21 tabs): 18 players,
+  100 rows, all 100 already on the site, 0 conflicts; and in real Chrome end-to-end with a new player + Team/Result columns.
 - **Refrag** (refrag.gg): no public/official API. The web app (play.refrag.gg) talks to an undocumented
   `api-k8s.refrag.gg` that needs a login, so CI cannot use it. `data/matches.json` was a **one-time import**
   made 2026-10-17 by reading match pages in a logged-in Chrome session (Claude in Chrome), via
@@ -15,7 +31,7 @@ Static site (no build step) for an in-house CS2 10-man league. Hosted on Vercel;
   Only matches played with the Refrag Scrim mod and uploaded to the account show full scoreboards (Refrag Rating,
   KAST, roles). Older uploaded demos (2026-01-16, 02-22, 04-10) show only map and score ("Stats not available").
   These matches were hosted on a friend's account but also appear on the owner's account (Dave Blunts = Matt).
-- **Not in either source:** draft picks, map pick/ban order, who captained. Those are only in the Discord posts.
+- **Not in any source:** draft picks, map pick/ban order, who captained. Those are only in the Discord posts.
 
 ## Name mapping
 Refrag in-game name -> sheet tab, matched on identical K/D/A in both 2026-10-17 scrims (`aliases` in matches.json):

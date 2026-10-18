@@ -1,5 +1,6 @@
 // Edge function: the only way to change match data. Needs a signed-in user.
 //   {action:"add", matches:[...]}   validate + append to the ledger (a bare array is treated as add)
+//        a match is a Refrag scoreboard / score-only game, or {kind:"stats", date, map, players:[...]} from a CSV/Excel upload
 //   {action:"remove", id}           append a remove entry (nothing is deleted)
 //   {action:"move", seq}            roll back / fast-forward the ledger head (0 = empty start)
 // Every write is a Postgres function (supabase/migrations/001_ledger.sql) that locks the head row, so a
@@ -17,6 +18,15 @@ export function problems(m: any): string[] {
   const p: string[] = [];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(m?.date ?? "")) p.push("date must be YYYY-MM-DD");
   if (!m?.map) p.push("map missing");
+  if (m?.kind === "stats") {
+    const ps = m.players;
+    if (!Array.isArray(ps) || ps.length < 1 || ps.length > 60) { p.push("players must be a list of 1-60"); return p; }
+    for (const x of ps) {
+      if (typeof x?.name !== "string" || !x.name.trim() || x.name.length > 40) p.push("every player needs a name (max 40 characters)");
+      else if (!["k", "d", "a", "dmg", "rounds"].every((k) => Number.isFinite(x[k]) && x[k] >= 0) || !(x.rounds > 0)) p.push(`${x.name}: kills, deaths, assists, damage and rounds must be numbers (rounds above 0)`);
+    }
+    return p;
+  }
   if (!(Array.isArray(m?.score) && m.score.length === 2 && m.score.every(Number.isInteger))) p.push("score must be [int, int]");
   if (!!m?.win !== !!m?.lose) p.push("win and lose must both be present");
   for (const side of ["win", "lose"]) {
@@ -25,6 +35,21 @@ export function problems(m: any): string[] {
     }
   }
   return p;
+}
+
+// Stats uploads get a content-derived id, so the same file uploaded twice is refused as a duplicate, and only known fields are stored.
+export async function cleanStats(m: any) {
+  const players = m.players.map((x: any) => {
+    const o: any = { name: x.name.trim(), k: x.k, d: x.d, a: x.a, hs: Number.isFinite(x.hs) ? x.hs : 0, dmg: x.dmg, rounds: x.rounds };
+    if (typeof x.team === "string" && x.team.trim()) o.team = x.team.trim().slice(0, 40);
+    if (typeof x.win === "boolean") o.win = x.win;
+    return o;
+  });
+  const canon = JSON.stringify(players.map((p: any) => [p.name, p.k, p.d, p.a, p.dmg, p.rounds]).sort());
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(canon));
+  const hash = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 10);
+  const slug = String(m.map).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return { kind: "stats", id: `stats-${m.date}-${slug}-${hash}`, date: m.date, map: String(m.map).trim(), rounds: m.rounds ?? players[0].rounds, source: "upload", players };
 }
 
 Deno.serve(async (req) => {
@@ -63,7 +88,8 @@ Deno.serve(async (req) => {
   for (const m of list) {
     const bad = problems(m);
     if (bad.length) { results.push({ map: m?.map, ok: false, problems: bad }); continue; }
-    const { data, error } = await db.rpc("ledger_add", { m, by_email: who, note: body?.note ?? null });
+    const clean = m.kind === "stats" ? await cleanStats(m) : m;
+    const { data, error } = await db.rpc("ledger_add", { m: clean, by_email: who, note: body?.note ?? null });
     if (error) { results.push({ id: m.id, ok: false, problems: [error.message] }); continue; }
     if (data?.ok) { inserted++; results.push({ id: data.id, ok: true, seq: data.seq }); }
     else results.push({ id: m.id, ok: false, problems: [data?.error ?? "rejected"] });
