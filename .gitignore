@@ -2,3 +2,5 @@
 .DS_Store
 .env*
 data/version.json
+__pycache__/
+*.pyc
