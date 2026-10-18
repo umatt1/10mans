@@ -61,12 +61,22 @@ Ledger SQL tests: paste `supabase/tests/ledger.test.sql` into the SQL editor; it
 Edge function code has no automated tests (no Deno here); it is only exercised through the SQL functions and manual calls.
 Gotcha: objects created inside the vm have a different prototype, so `harness.run` returns JSON copies for `deepEqual`.
 
+## Refreshing sheet data (no cron)
+There is deliberately **no schedule** (owner worried about cost). Every Vercel build runs `python3 scripts/sync.py` first (buildCommand in
+`vercel.json`), so *any deploy re-reads the Google Sheet*; if Google/the sheet fails it logs `SHEET SYNC FAILED` and ships the last committed
+`data/stats.json`. Ways to refresh: (1) the Vercel **Deploy Hook** `refresh-sheet-data` (project 10mans, branch main, id I7zwDFNbTR; the URL is a
+secret - list it with `vercel api /v9/projects/<id>`; POST or open it and a ~20s build runs; verified 2026-10-18), (2) Vercel dashboard
+Deployments -> Redeploy (not tested), (3) any push to main, (4) Actions tab -> Sync stats -> Run workflow (commits stats.json; also reruns on
+pushes touching data/matches/**). The footer "Sheet synced ..." time is when the last build fetched the sheet. Matches in Supabase are live
+immediately and need no refresh. Not built: an in-site refresh button (would need the ingest-match edge function to call the hook, with the hook
+URL as a Supabase secret).
+
 ## CI/CD
 Push to `main` -> Vercel builds and deploys (git-connected). **Tests gate the deploy:** `vercel.json` sets `buildCommand: "npm test"`, so a
 failing test = failed Vercel build = the previous production deployment keeps serving (verified 2026-10-18 on branch `gate-check` with a
 deliberately failing test: "Command npm test exited with 1"; the same branch with the test removed built Ready). Branch/PR pushes get
 preview deployments that run the same gate. GitHub Actions `Tests` (`test.yml`) runs the same suite and shows a check on commits/PRs;
-`validate.yml` checks match files on PRs; `sync.yml` rebuilds `data/matches.json` + syncs the sheet (every 6h and on match-file pushes) and
+`validate.yml` checks match files on PRs; `sync.yml` (manual + on match-file pushes only; no cron) rebuilds `data/matches.json` + syncs the sheet and
 its commit redeploys through the same gate. Not gated / manual: Supabase SQL migrations and the `ingest-match` edge function (applied via the
 dashboard); no branch protection is enabled, so a direct push to main still deploys if (and only if) the build's tests pass.
 Vercel builds on Node 24 with Python available; `npm test` uses `node --test tests/*.test.js` (a directory arg is not portable across Node versions).
